@@ -2,26 +2,40 @@ import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, FamilyMember } from './supabase'
 import Login from './Login'
-import LogPage from './pages/LogPage'
+import TodayPage from './pages/TodayPage'
 import MedsPage from './pages/MedsPage'
+import CarePage from './pages/CarePage'
+import ChartsPage from './pages/ChartsPage'
+import HistoryPage from './pages/HistoryPage'
+import NotesPage from './pages/NotesPage'
 import CalendarPage from './pages/CalendarPage'
 import TasksPage from './pages/TasksPage'
+import ExportPage from './pages/ExportPage'
 
-type Tab = 'log' | 'meds' | 'calendar' | 'tasks'
+type Tab = 'today' | 'meds' | 'care' | 'charts' | 'history' | 'notes' | 'appts' | 'tasks' | 'export'
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
-  { id: 'log', label: 'Log', icon: '📝' },
-  { id: 'meds', label: 'Meds', icon: '💊' },
-  { id: 'calendar', label: 'Appts', icon: '📅' },
-  { id: 'tasks', label: 'Tasks', icon: '✅' },
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'today', label: '📋 Today' },
+  { id: 'meds', label: '💊 Meds' },
+  { id: 'care', label: '🛁 Care' },
+  { id: 'charts', label: '📈 Charts' },
+  { id: 'history', label: '📅 History' },
+  { id: 'notes', label: '📌 Notes' },
+  { id: 'appts', label: '🗓 Appts' },
+  { id: 'tasks', label: '✅ Tasks' },
+  { id: 'export', label: '📤 Export' },
 ]
+
+// Tabs visible in read-only "doctor mode"
+const DOCTOR_TABS: Tab[] = ['charts', 'history', 'notes', 'export']
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<Tab>('log')
+  const [tab, setTab] = useState<Tab>('today')
   const [family, setFamily] = useState<FamilyMember[]>([])
   const [allowed, setAllowed] = useState<boolean | null>(null)
+  const [doctorMode, setDoctorMode] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -54,8 +68,11 @@ export default function App() {
 
   const myEmail = session.user.email?.toLowerCase() ?? ''
   const me = family.find((f) => f.email === myEmail)
-  const nameOf = (email: string | null | undefined) =>
-    family.find((f) => f.email === email?.toLowerCase())?.display_name ?? email ?? ''
+  const nameOf = (email: string | null | undefined) => {
+    if (!email) return ''
+    if (email === 'setup') return 'Setup'
+    return family.find((f) => f.email === email.toLowerCase())?.display_name ?? email
+  }
 
   if (allowed === false) {
     return (
@@ -73,29 +90,51 @@ export default function App() {
   }
   if (allowed === null) return null
 
+  const visibleTabs = doctorMode ? TABS.filter((t) => DOCTOR_TABS.includes(t.id)) : TABS
+  const activeTab = doctorMode && !DOCTOR_TABS.includes(tab) ? 'charts' : tab
+
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>Mom's Care Log</h1>
+    <div className={doctorMode ? 'doctor' : ''}>
+      <header className="topbar">
+        <div>
+          <div className="title">{doctorMode ? '👁 Mom’s Care Log — View Only' : '🌸 Mom’s Care Log'}</div>
+          <div className="subtitle">
+            {doctorMode ? 'Read-only · no editing' : `${fmtToday()} · ${me?.display_name ?? myEmail}`}
+          </div>
+        </div>
         <div className="row">
-          <span className="who">{me?.display_name ?? myEmail}</span>
-          <button className="ghost" onClick={() => supabase.auth.signOut()}>Sign out</button>
+          <button className="topbtn" onClick={() => setDoctorMode(!doctorMode)}>
+            {doctorMode ? '✏️ Log Mode' : '👁 View'}
+          </button>
+          {!doctorMode && (
+            <button className="topbtn" onClick={() => supabase.auth.signOut()}>Sign out</button>
+          )}
         </div>
       </header>
 
-      {tab === 'log' && <LogPage nameOf={nameOf} myEmail={myEmail} />}
-      {tab === 'meds' && <MedsPage nameOf={nameOf} />}
-      {tab === 'calendar' && <CalendarPage family={family} nameOf={nameOf} />}
-      {tab === 'tasks' && <TasksPage family={family} nameOf={nameOf} />}
-
-      <nav className="tabbar">
-        {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
-            <span className="icon">{t.icon}</span>
+      <nav className="tabstrip">
+        {visibleTabs.map((t) => (
+          <button key={t.id} className={activeTab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
             {t.label}
           </button>
         ))}
       </nav>
+
+      <main className="app">
+        {activeTab === 'today' && <TodayPage nameOf={nameOf} myEmail={myEmail} />}
+        {activeTab === 'meds' && <MedsPage nameOf={nameOf} />}
+        {activeTab === 'care' && <CarePage nameOf={nameOf} />}
+        {activeTab === 'charts' && <ChartsPage />}
+        {activeTab === 'history' && <HistoryPage nameOf={nameOf} />}
+        {activeTab === 'notes' && <NotesPage nameOf={nameOf} readOnly={doctorMode} />}
+        {activeTab === 'appts' && <CalendarPage family={family} nameOf={nameOf} />}
+        {activeTab === 'tasks' && <TasksPage family={family} nameOf={nameOf} />}
+        {activeTab === 'export' && <ExportPage />}
+      </main>
     </div>
   )
+}
+
+function fmtToday() {
+  return new Date().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 }

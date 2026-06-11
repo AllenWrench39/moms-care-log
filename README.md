@@ -3,10 +3,15 @@
 A private web app for our family (5–7 people) to coordinate Mom's care from our phones.
 
 **What it does:**
-- 📝 **Log** — a shared daily journal: meals, mood, sleep, bathroom, activities, health notes
-- 💊 **Meds** — medication list with times of day; tap to check off each dose (shows who gave it)
-- 📅 **Appts** — upcoming appointments, where, and who's driving
+- 📋 **Today** — vitals (BP, blood sugar, temp, O2, weight, pain, mood), symptom toggles with automatic diarrhea med-hold warning, meals, fluids with a 64 oz goal bar, and shared notes
+- 💊 **Meds** — all 26 medications pre-loaded and grouped by time; Give or Hold (with reason) each dose, with DO-NOT-HOLD and hold-on-diarrhea safety flags; editable schedule
+- 🛁 **Care** — bowel movements, urine color, hygiene checklist, cleaning tasks, and PT exercises with sets/reps
+- 📈 **Charts** — blood pressure and blood sugar over 30 days, fluids by type over 7 days
+- 📅 **History** — tap any past day to see everything that was logged
+- 📌 **Notes** — pinned caregiver instructions with a full change log
+- 🗓 **Appts** — upcoming appointments, where, and who's driving
 - ✅ **Tasks** — errands and care shifts, assignable to a family member
+- 📤 **Export** — CSV download for the doctor (cleaning excluded), plus a read-only doctor view (👁 View)
 
 Sign-in is by **email magic link** — no passwords. Only emails on the family list can see or add anything.
 
