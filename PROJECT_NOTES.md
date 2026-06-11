@@ -26,15 +26,16 @@ Supabase row-level security (RLS).
   `pt_schedule`) came from a Claude-artifact prototype and had PUBLIC
   read/write policies — they must be dropped.
 
-## REMAINING SETUP (not done yet)
-1. In Supabase SQL Editor, run in order:
-   a. `supabase/0-cleanup-old-tables.sql` (drops the old unsecured tables)
-   b. `supabase/schema.sql` — FIRST edit the bottom: add each family
-      member's email (lowercase) + first name to `family_members`.
-      Currently only has vincenthowg@gmail.com / Vincent.
-2. Vercel: import this repo (deploy from `main`), set env vars
-   `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`
-   (anon key from Supabase → Project Settings → API), deploy.
+## REMAINING SETUP
+1. ✅ DONE (June 11, 2026, via Supabase connector): old unsecured tables
+   dropped; `schema.sql` applied as migrations (15 tables, RLS on all,
+   26 meds / 6 PT exercises / 6 caregiver notes seeded). Allowlist
+   currently has ONLY vincenthowg@gmail.com — add family members later:
+   `insert into public.family_members (email, display_name) values ('email','Name');`
+2. Vercel (manual — connector can't create projects): at vercel.com/new
+   import this repo, deploy from `main`. Env vars are committed in
+   `.env.production` so no dashboard env vars are needed (anon key is
+   public by design; old public tables are gone).
 3. Supabase → Authentication → URL Configuration: set Site URL to the
    Vercel URL and add it to Redirect URLs (so magic links open the app).
 4. Test sign-in on a phone, then share the URL with family
