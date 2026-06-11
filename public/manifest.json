@@ -1,0 +1,12 @@
+{
+  "name": "Mom's Care Log",
+  "short_name": "Mom's Care",
+  "description": "Family care coordination for Mom",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf8f5",
+  "theme_color": "#7c6fde",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
