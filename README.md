@@ -29,6 +29,8 @@ Sign-in is by **email magic link** — no passwords. Only emails on the family l
 
 ### Step 2 — Create the database tables
 
+> **Reusing the old project?** Run `supabase/0-cleanup-old-tables.sql` in the SQL Editor first — it removes the old, unsecured tables from the artifact version. Export anything you want to keep from Table Editor before running it.
+
 1. Open `supabase/schema.sql` from this repo.
 2. **Edit the bottom of the file** — replace the example emails with each family member's real email and first name. Emails must be lowercase.
 3. In the Supabase dashboard, go to **SQL Editor**, paste the whole file, and click **Run**.
