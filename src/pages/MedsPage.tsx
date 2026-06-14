@@ -53,6 +53,19 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
     load()
   }
 
+  async function giveAll(time: string) {
+    const pending = timeGroups[time].filter((med) => {
+      const d = doseFor(med.id, time)
+      return d?.status !== 'given' && d?.status !== 'held'
+    })
+    if (pending.length === 0) return
+    await supabase.from('med_doses').insert(
+      pending.map((med) => ({ medication_id: med.id, dose_date: today, dose_time: time, status: 'given' }))
+    )
+    toast.show(`${pending.length} meds marked ✓`)
+    load()
+  }
+
   async function hold(med: Medication, time: string, reason?: string) {
     const existing = doseFor(med.id, time)
     if (existing?.status === 'held') {
@@ -118,9 +131,21 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
         Tap <b>Give</b> to mark given · <b>Hold</b> to log a skipped dose · tap again to undo.
       </div>
 
-      {sortedTimes.map((time) => (
+      {sortedTimes.map((time) => {
+        const pendingCount = timeGroups[time].filter((med) => {
+          const d = doseFor(med.id, time)
+          return d?.status !== 'given' && d?.status !== 'held'
+        }).length
+        return (
         <div key={time}>
-          <div className="med-time-head">🕐 {fmtTime24(time)}</div>
+          <div className="med-time-head row between">
+            <span>🕐 {fmtTime24(time)}</span>
+            {timeGroups[time].length > 2 && pendingCount > 0 && (
+              <button className="btn-give" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => giveAll(time)}>
+                ✓ Give all ({pendingCount})
+              </button>
+            )}
+          </div>
           {timeGroups[time].map((med) => {
             const dose = doseFor(med.id, time)
             const given = dose?.status === 'given'
@@ -152,7 +177,8 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
             )
           })}
         </div>
-      ))}
+        )
+      })}
 
       <div style={{ marginTop: 18 }}>
         <button className="ghost" onClick={() => setManage(!manage)}>
