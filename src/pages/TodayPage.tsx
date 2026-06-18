@@ -16,6 +16,8 @@ const VITALS: { kind: string; label: string; ph: string }[] = [
   { kind: 'mood', label: 'Mood', ph: 'Good' },
 ]
 
+const VITAL_LABEL: Record<string, string> = Object.fromEntries(VITALS.map((v) => [v.kind, v.label]))
+
 export const SYMPTOMS = [
   'Nausea', 'Vomiting', 'Diarrhea', 'Constipation', 'Dizziness', 'Shortness of breath',
   'Chest pain', 'Confusion', 'Fatigue', 'Swelling', 'Fall', 'No appetite',
@@ -40,6 +42,9 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   const [notes, setNotes] = useState<LogEntry[]>([])
 
   const [vitalInputs, setVitalInputs] = useState<Record<string, string>>({})
+  const [editingVital, setEditingVital] = useState<VitalReading | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [editTime, setEditTime] = useState('')
   const [mealType, setMealType] = useState('Breakfast')
   const [mealDesc, setMealDesc] = useState('')
   const [mealAmt, setMealAmt] = useState('')
@@ -82,6 +87,26 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
     await supabase.from('vital_readings').insert({ reading_date: today, kind, value })
     setVitalInputs({ ...vitalInputs, [kind]: '' })
     toast.show('Reading saved ✓')
+    load()
+  }
+
+  function startEditVital(v: VitalReading) {
+    setEditingVital(v)
+    setEditValue(v.value)
+    const d = new Date(v.created_at)
+    setEditTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
+  }
+
+  async function saveVitalEdit() {
+    if (!editingVital) return
+    const value = editValue.trim()
+    if (!value) return
+    const d = new Date(editingVital.created_at)
+    const [hh, mm] = editTime.split(':').map(Number)
+    if (!isNaN(hh) && !isNaN(mm)) d.setHours(hh, mm, 0, 0)
+    await supabase.from('vital_readings').update({ value, created_at: d.toISOString() }).eq('id', editingVital.id)
+    setEditingVital(null)
+    toast.show('Reading updated ✓')
     load()
   }
 
@@ -155,6 +180,36 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
         <div className="faint" style={{ marginTop: 7 }}>
           Type a value and tap away to save. Multiple readings per day are kept.
         </div>
+        {vitals.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            {[...vitals].reverse().map((v) =>
+              editingVital?.id === v.id ? (
+                <div className="feed-item" key={v.id}>
+                  <div className="row grow" style={{ gap: 6 }}>
+                    <input className="grow" value={editValue} onChange={(e) => setEditValue(e.target.value)} />
+                    <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} style={{ width: 120 }} />
+                  </div>
+                  <div className="row" style={{ flexShrink: 0 }}>
+                    <button onClick={saveVitalEdit}>Save</button>
+                    <button className="secondary" onClick={() => setEditingVital(null)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="feed-item" key={v.id}>
+                  <div>
+                    <span className="tag">{VITAL_LABEL[v.kind] ?? v.kind}</span>
+                    <b>{v.value}</b>
+                    <span className="faint"> {fmtClock(v.created_at)} · {nameOf(v.created_by)}</span>
+                  </div>
+                  <div className="row" style={{ flexShrink: 0 }}>
+                    <button className="secondary" style={{ padding: '5px 9px', fontSize: 12 }} onClick={() => startEditVital(v)}>Edit</button>
+                    <button className="danger" onClick={() => del('vital_readings', v.id)}>✕</button>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        )}
       </div>
 
       <div className="sec sec-red">
