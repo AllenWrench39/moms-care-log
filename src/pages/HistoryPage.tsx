@@ -28,6 +28,9 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
   const [meds, setMeds] = useState<Medication[]>([])
   const [exercises, setExercises] = useState<PtExercise[]>([])
   const [summaries, setSummaries] = useState<Record<string, string[]>>({})
+  const [editingVital, setEditingVital] = useState<VitalReading | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [editTime, setEditTime] = useState('')
 
   useEffect(() => {
     const since = daysAgoStr(30)
@@ -85,6 +88,28 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
     })
   }, [selected])
 
+  function startEditVital(v: VitalReading) {
+    setEditingVital(v)
+    setEditValue(v.value)
+    const d = new Date(v.created_at)
+    setEditTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
+  }
+
+  async function saveVitalEdit() {
+    if (!editingVital) return
+    const value = editValue.trim()
+    if (!value) return
+    const d = new Date(editingVital.created_at)
+    const [hh, mm] = editTime.split(':').map(Number)
+    if (!isNaN(hh) && !isNaN(mm)) d.setHours(hh, mm, 0, 0)
+    await supabase.from('vital_readings').update({ value, created_at: d.toISOString() }).eq('id', editingVital.id)
+    setEditingVital(null)
+    if (selected) {
+      const v = await supabase.from('vital_readings').select('*').eq('reading_date', selected).order('created_at')
+      setDay((prev) => prev ? { ...prev, vitals: v.data ?? [] } : prev)
+    }
+  }
+
   const medName = (id: string) => {
     const m = meds.find((x) => x.id === id)
     return m ? `${m.name} ${m.dose ?? ''}`.trim() : 'Unknown med'
@@ -107,11 +132,27 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
         {day.vitals.length > 0 && (
           <div className="sec sec-green">
             <div className="sec-title">Vitals</div>
-            {day.vitals.map((v) => (
-              <div key={v.id} style={{ fontSize: 13, padding: '3px 0' }}>
-                <b>{v.kind.replace('_', ' ')}:</b> {v.value} <span className="faint">{fmtClock(v.created_at)} · {nameOf(v.created_by)}</span>
-              </div>
-            ))}
+            {day.vitals.map((v) =>
+              editingVital?.id === v.id ? (
+                <div className="feed-item" key={v.id}>
+                  <div className="row grow" style={{ gap: 6 }}>
+                    <input className="grow" value={editValue} onChange={(e) => setEditValue(e.target.value)} />
+                    <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} style={{ width: 120 }} />
+                  </div>
+                  <div className="row" style={{ flexShrink: 0 }}>
+                    <button onClick={saveVitalEdit}>Save</button>
+                    <button className="secondary" onClick={() => setEditingVital(null)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="feed-item" key={v.id}>
+                  <div style={{ fontSize: 13 }}>
+                    <b>{v.kind.replace('_', ' ')}:</b> {v.value} <span className="faint">{fmtClock(v.created_at)} · {nameOf(v.created_by)}</span>
+                  </div>
+                  <button className="secondary" style={{ padding: '5px 9px', fontSize: 12, flexShrink: 0 }} onClick={() => startEditVital(v)}>Edit</button>
+                </div>
+              )
+            )}
             {day.symptoms.length > 0 && (
               <div style={{ fontSize: 13, padding: '3px 0' }}><b>Symptoms:</b> {day.symptoms.map((s) => s.symptom).join(', ')}</div>
             )}
