@@ -5,7 +5,7 @@ import { useToast } from '../toast'
 const BM_SIZES = ['Small', 'Medium', 'Large']
 const BM_TYPES = ['Normal', 'Loose', 'Diarrhea', 'Hard', 'Watery']
 const URINE_COLORS = ['Clear', 'Pale Yellow', 'Dark Yellow', 'Amber', 'Orange', 'Pink/Red', 'Brown']
-const HYGIENE_ITEMS = ['Bed Bath', 'Hair Wash', 'Nail Care', 'Oral Care', 'Skin Care', 'Pad Change', 'Repositioned']
+const HYGIENE_ITEMS = ['Bed Bath', 'Shower', 'Hair Wash', 'Nail Care', 'Oral Care', 'Skin Care', 'Pad Change', 'Repositioned']
 const CLEANING_ITEMS = ['Bed Linens', 'Room Clean', 'Bathroom', 'Laundry', 'Trash', 'Floor Mop', 'Dishes', 'Supply Restock']
 
 export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) {
