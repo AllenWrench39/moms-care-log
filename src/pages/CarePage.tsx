@@ -50,11 +50,19 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
     load()
   }
 
+  const isWalking = (ex: PtExercise) => ex.name.toLowerCase().includes('walking') || ex.name.toLowerCase() === 'walk'
+
   async function logPt(ex: PtExercise) {
     const input = ptInput[ex.id] ?? { sets: String(ex.target_sets), reps: String(ex.target_reps) }
-    const sets = parseInt(input.sets), reps = parseInt(input.reps)
-    if (!sets || !reps) return
-    await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: today, sets, reps })
+    if (isWalking(ex)) {
+      const feet = parseInt(input.reps)
+      if (!feet) return
+      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: today, sets: 1, reps: feet })
+    } else {
+      const sets = parseInt(input.sets), reps = parseInt(input.reps)
+      if (!sets || !reps) return
+      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: today, sets, reps })
+    }
     toast.show('PT logged ✓')
     load()
   }
@@ -134,18 +142,31 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
                   <div className="faint">Target: {ex.target_sets} sets × {ex.target_reps} reps</div>
                 </div>
               </div>
-              <div className="row" style={{ marginTop: 6 }}>
-                <input style={{ width: 64 }} type="number" value={input.sets}
-                  onChange={(e) => setPtInput({ ...ptInput, [ex.id]: { ...input, sets: e.target.value } })} />
-                <span className="muted">sets ×</span>
-                <input style={{ width: 64 }} type="number" value={input.reps}
-                  onChange={(e) => setPtInput({ ...ptInput, [ex.id]: { ...input, reps: e.target.value } })} />
-                <span className="muted">reps</span>
+                  <div className="row" style={{ marginTop: 6 }}>
+                {isWalking(ex) ? (
+                  <>
+                    <input style={{ width: 80 }} type="number" placeholder="0" value={input.reps}
+                      onChange={(e) => setPtInput({ ...ptInput, [ex.id]: { ...input, reps: e.target.value } })} />
+                    <span className="muted">feet</span>
+                  </>
+                ) : (
+                  <>
+                    <input style={{ width: 64 }} type="number" value={input.sets}
+                      onChange={(e) => setPtInput({ ...ptInput, [ex.id]: { ...input, sets: e.target.value } })} />
+                    <span className="muted">sets ×</span>
+                    <input style={{ width: 64 }} type="number" value={input.reps}
+                      onChange={(e) => setPtInput({ ...ptInput, [ex.id]: { ...input, reps: e.target.value } })} />
+                    <span className="muted">reps</span>
+                  </>
+                )}
                 <button style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => logPt(ex)}>Log</button>
               </div>
               {done.map((p) => (
                 <div className="feed-item" key={p.id}>
-                  <span style={{ color: 'var(--green)' }}>✓ {p.sets} × {p.reps} <span className="faint">{fmtClock(p.created_at)} · {nameOf(p.created_by)}</span></span>
+                  <span style={{ color: 'var(--green)' }}>
+                    {isWalking(ex) ? `✓ ${p.reps} ft` : `✓ ${p.sets} × ${p.reps}`}
+                    {' '}<span className="faint">{fmtClock(p.created_at)} · {nameOf(p.created_by)}</span>
+                  </span>
                   <button className="danger" onClick={() => del('pt_logs', p.id)}>✕</button>
                 </div>
               ))}

@@ -214,7 +214,10 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
           <div className="sec sec-green">
             <div className="sec-title">🏋️ Physical Therapy</div>
             {day.pt.map((p) => (
-              <div key={p.id} style={{ fontSize: 13, padding: '3px 0' }}>{exName(p.exercise_id)}: {p.sets} × {p.reps} <span className="faint">{nameOf(p.created_by)}</span></div>
+              <div key={p.id} style={{ fontSize: 13, padding: '3px 0' }}>
+                {exName(p.exercise_id)}: {exName(p.exercise_id).toLowerCase().includes('walking') || exName(p.exercise_id).toLowerCase() === 'walk' ? `${p.reps} ft` : `${p.sets} × ${p.reps}`}
+                {' '}<span className="faint">{nameOf(p.created_by)}</span>
+              </div>
             ))}
           </div>
         )}

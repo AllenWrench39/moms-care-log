@@ -63,7 +63,8 @@ export default function ExportPage() {
       ])
       ;(pt ?? []).forEach((p) => {
         const e = (ex ?? []).find((x) => x.id === p.exercise_id)
-        rows.push([p.log_date, clock(p.created_at), p.created_by, 'PT', e?.name ?? 'Exercise', `${p.sets} sets x ${p.reps} reps`])
+        const isWalk = (e?.name ?? '').toLowerCase().includes('walking') || (e?.name ?? '').toLowerCase() === 'walk'
+        rows.push([p.log_date, clock(p.created_at), p.created_by, 'PT', e?.name ?? 'Exercise', isWalk ? `${p.reps} ft` : `${p.sets} sets x ${p.reps} reps`])
       })
     }
     if (want('notes')) {
