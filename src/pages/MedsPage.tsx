@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
-import { supabase, todayStr, fmtTime24, fmtClock, Medication, MedDose } from '../supabase'
+import { supabase, todayStr, fmtTime24, fmtClock, Medication, MedDose, PowderLog } from '../supabase'
 import { DIARRHEA_WARNING } from './TodayPage'
 import { useToast } from '../toast'
+
+const POWDER_AMOUNTS = ['½ tsp', '1 tsp', '2 tsp', '½ tbsp', '1 tbsp', '2 tbsp']
+const POWDER_ITEMS = ['Fiber', 'MiraLAX'] as const
 
 const HOLD_REASONS = ['Refused', 'Nausea/Vomiting', 'Diarrhea', 'Low BP', 'Low Blood Sugar', 'Asleep', "Doctor's order", 'Out of stock', 'Other']
 
@@ -16,16 +19,33 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
   const [editing, setEditing] = useState<Medication | null>(null)
   const [form, setForm] = useState({ name: '', dose: '', times: '', notes: '', with_food: false, hold_diarrhea: false, never_hold: false })
   const [showAdd, setShowAdd] = useState(false)
+  const [powderLogs, setPowderLogs] = useState<PowderLog[]>([])
+  const [powderPicker, setPowderPicker] = useState<'Fiber' | 'MiraLAX' | null>(null)
 
   async function load() {
-    const [m, d, s] = await Promise.all([
+    const [m, d, s, pl] = await Promise.all([
       supabase.from('medications').select('*').eq('active', true).order('sort_order').order('name'),
       supabase.from('med_doses').select('*').eq('dose_date', today),
       supabase.from('day_symptoms').select('symptom').eq('sym_date', today),
+      supabase.from('powder_logs').select('*').eq('log_date', today).order('created_at'),
     ])
     setMeds(m.data ?? [])
     setDoses(d.data ?? [])
     setHasDiarrhea((s.data ?? []).some((x) => ['Diarrhea', 'Vomiting'].includes(x.symptom)))
+    setPowderLogs(pl.data ?? [])
+  }
+
+  async function logPowder(item: 'Fiber' | 'MiraLAX', amount: string) {
+    await supabase.from('powder_logs').insert({ item, amount, log_date: today })
+    toast.show(`${item} ${amount} logged ✓`)
+    setPowderPicker(null)
+    load()
+  }
+
+  async function delPowder(id: string) {
+    if (!confirm('Remove this?')) return
+    await supabase.from('powder_logs').delete().eq('id', id)
+    load()
   }
 
   useEffect(() => {
@@ -132,12 +152,32 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
       </div>
 
       {sortedTimes.map((time) => {
+        const showPowderSection = time === '09:00'
         const pendingCount = timeGroups[time].filter((med) => {
           const d = doseFor(med.id, time)
           return d?.status !== 'given' && d?.status !== 'held'
         }).length
         return (
         <div key={time}>
+        {showPowderSection && (
+          <div style={{ marginBottom: 10 }}>
+            <div className="med-time-head">🌾 Fiber &amp; MiraLAX</div>
+            {POWDER_ITEMS.map((item) => (
+              <div className="med-row" key={item}>
+                <div className="row between">
+                  <b className="med-name">{item}</b>
+                  <button className="btn-give" onClick={() => setPowderPicker(item)}>Log dose</button>
+                </div>
+                {powderLogs.filter((p) => p.item === item).map((p) => (
+                  <div className="feed-item" key={p.id}>
+                    <span style={{ color: 'var(--green)' }}>✓ {p.amount} <span className="faint">{fmtClock(p.created_at)} · {nameOf(p.created_by)}</span></span>
+                    <button className="danger" onClick={() => delPowder(p.id)}>✕</button>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
           <div className="med-time-head row between">
             <span>🕐 {fmtTime24(time)}</span>
             {timeGroups[time].length > 2 && pendingCount > 0 && (
@@ -227,6 +267,20 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {powderPicker && (
+        <div className="modal-back" onClick={() => setPowderPicker(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 'bold', fontSize: 15, marginBottom: 12 }}>Log {powderPicker} — how much?</div>
+            <div className="chips" style={{ marginBottom: 14 }}>
+              {POWDER_AMOUNTS.map((a) => (
+                <button key={a} className="chip" onClick={() => logPowder(powderPicker, a)}>{a}</button>
+              ))}
+            </div>
+            <button className="secondary" style={{ width: '100%' }} onClick={() => setPowderPicker(null)}>Cancel</button>
+          </div>
         </div>
       )}
 

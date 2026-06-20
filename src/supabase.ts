@@ -77,6 +77,15 @@ export type MedDose = {
   created_by: string
 }
 
+export type PowderLog = {
+  id: string
+  item: string
+  amount: string
+  log_date: string
+  created_at: string
+  created_by: string
+}
+
 export type CareEvent = {
   id: string
   event_date: string
