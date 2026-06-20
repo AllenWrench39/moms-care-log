@@ -98,6 +98,7 @@ export type CareEvent = {
 export type PtExercise = {
   id: string
   name: string
+  unit: 'sets_reps' | 'minutes' | 'feet' | 'custom'
   target_sets: number
   target_reps: number
   active: boolean

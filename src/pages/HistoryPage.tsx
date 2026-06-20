@@ -115,6 +115,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
     return m ? `${m.name} ${m.dose ?? ''}`.trim() : 'Unknown med'
   }
   const exName = (id: string) => exercises.find((x) => x.id === id)?.name ?? 'Exercise'
+  const exUnit = (id: string) => exercises.find((x) => x.id === id)?.unit ?? 'sets_reps'
 
   if (selected && day) {
     const totalOz = day.fluids.reduce((s, f) => s + Number(f.oz), 0)
@@ -215,8 +216,11 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
             <div className="sec-title">🏋️ Physical Therapy</div>
             {day.pt.map((p) => (
               <div key={p.id} style={{ fontSize: 13, padding: '3px 0' }}>
-                {exName(p.exercise_id)}: {exName(p.exercise_id).toLowerCase().includes('walking') || exName(p.exercise_id).toLowerCase() === 'walk' ? `${p.reps} ft` : `${p.sets} × ${p.reps}`}
-                {' '}<span className="faint">{nameOf(p.created_by)}</span>
+                {exName(p.exercise_id)}: {
+                  exUnit(p.exercise_id) === 'sets_reps' ? `${p.sets} × ${p.reps}` :
+                  exUnit(p.exercise_id) === 'minutes' ? `${p.reps} min` :
+                  exUnit(p.exercise_id) === 'feet' ? `${p.reps} ft` : `${p.reps}`
+                } <span className="faint">{nameOf(p.created_by)}</span>
               </div>
             ))}
           </div>
