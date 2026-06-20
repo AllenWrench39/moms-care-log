@@ -64,6 +64,7 @@ export type Medication = {
   never_hold: boolean
   active: boolean
   sort_order: number
+  scheduled_days: number[] | null
 }
 
 export type MedDose = {

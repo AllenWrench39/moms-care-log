@@ -8,6 +8,18 @@ const POWDER_ITEMS = ['Fiber', 'MiraLAX'] as const
 
 const HOLD_REASONS = ['Refused', 'Nausea/Vomiting', 'Diarrhea', 'Low BP', 'Low Blood Sugar', 'Asleep', "Doctor's order", 'Out of stock', 'Other']
 
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+function scheduledToday(med: Medication): boolean {
+  if (!med.scheduled_days || med.scheduled_days.length === 0) return true
+  const dow = new Date().getDay()
+  return med.scheduled_days.includes(dow)
+}
+
+function fmtScheduledDays(days: number[]): string {
+  return days.sort((a, b) => a - b).map((d) => DAY_LABELS[d]).join(' · ')
+}
+
 export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) {
   const today = todayStr()
   const toast = useToast()
@@ -17,7 +29,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
   const [holdTarget, setHoldTarget] = useState<{ med: Medication; time: string } | null>(null)
   const [manage, setManage] = useState(false)
   const [editing, setEditing] = useState<Medication | null>(null)
-  const [form, setForm] = useState({ name: '', dose: '', times: '', notes: '', with_food: false, hold_diarrhea: false, never_hold: false })
+  const [form, setForm] = useState({ name: '', dose: '', times: '', notes: '', with_food: false, hold_diarrhea: false, never_hold: false, scheduled_days: [] as number[] })
   const [showAdd, setShowAdd] = useState(false)
   const [powderLogs, setPowderLogs] = useState<PowderLog[]>([])
   const [powderPicker, setPowderPicker] = useState<'Fiber' | 'MiraLAX' | null>(null)
@@ -118,11 +130,12 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
       name: form.name.trim(), dose: form.dose.trim() || null, times,
       notes: form.notes.trim() || null, with_food: form.with_food,
       hold_diarrhea: form.hold_diarrhea, never_hold: form.never_hold,
+      scheduled_days: form.scheduled_days.length > 0 ? form.scheduled_days : null,
     }
     if (editing) await supabase.from('medications').update(payload).eq('id', editing.id)
     else await supabase.from('medications').insert({ ...payload, sort_order: 99 })
     setEditing(null); setShowAdd(false)
-    setForm({ name: '', dose: '', times: '', notes: '', with_food: false, hold_diarrhea: false, never_hold: false })
+    setForm({ name: '', dose: '', times: '', notes: '', with_food: false, hold_diarrhea: false, never_hold: false, scheduled_days: [] })
     toast.show('Saved ✓')
     load()
   }
@@ -133,6 +146,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
     setForm({
       name: med.name, dose: med.dose ?? '', times: med.times.join(', '), notes: med.notes ?? '',
       with_food: med.with_food, hold_diarrhea: med.hold_diarrhea, never_hold: med.never_hold,
+      scheduled_days: med.scheduled_days ?? [],
     })
   }
 
@@ -191,14 +205,16 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
             const given = dose?.status === 'given'
             const held = dose?.status === 'held'
             const holdFlag = hasDiarrhea && med.hold_diarrhea && !given && !held
+            const notToday = !scheduledToday(med)
             return (
-              <div className="med-row" key={med.id + time}>
+              <div className="med-row" key={med.id + time} style={notToday ? { opacity: 0.45 } : {}}>
                 <div className="row between top">
                   <div className="grow">
                     <div className={`med-name ${given ? 'given' : ''} ${held ? 'held' : ''}`}>
                       {med.name} {med.dose && <span style={{ fontWeight: 'normal', fontSize: 13 }}>{med.dose}</span>}
                       {med.never_hold && <span className="badge" style={{ marginLeft: 5, background: 'var(--green-soft)', color: 'var(--green)' }}>DO NOT HOLD</span>}
                       {holdFlag && <span className="badge" style={{ marginLeft: 5, background: 'var(--amber-soft)', color: 'var(--amber-ink)' }}>⚠ HOLD TODAY?</span>}
+                      {notToday && <span className="badge" style={{ marginLeft: 5, background: 'var(--border)', color: 'var(--muted)' }}>Not today — {fmtScheduledDays(med.scheduled_days!)}</span>}
                     </div>
                     {med.notes && <div className="med-note">{med.notes}</div>}
                     {given && dose && <div className="med-status" style={{ color: 'var(--green)' }}>✓ Given {fmtClock(dose.created_at)} by {nameOf(dose.created_by)}</div>}
@@ -243,6 +259,18 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
               <input value={form.times} onChange={(e) => setForm({ ...form, times: e.target.value })} placeholder="09:00, 17:00" />
               <label>Notes</label>
               <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="e.g. With food" />
+              <label>Scheduled days (leave all off = every day)</label>
+              <div className="chips" style={{ marginBottom: 8 }}>
+                {DAY_LABELS.map((day, i) => (
+                  <button key={i} className={`chip ${form.scheduled_days.includes(i) ? 'on' : ''}`}
+                    onClick={() => {
+                      const days = form.scheduled_days.includes(i)
+                        ? form.scheduled_days.filter((d) => d !== i)
+                        : [...form.scheduled_days, i]
+                      setForm({ ...form, scheduled_days: days })
+                    }}>{day}</button>
+                ))}
+              </div>
               <div className="chips" style={{ marginBottom: 10 }}>
                 <button className={`chip ${form.with_food ? 'on' : ''}`} onClick={() => setForm({ ...form, with_food: !form.with_food })}>With food</button>
                 <button className={`chip ${form.hold_diarrhea ? 'on-red' : ''}`} onClick={() => setForm({ ...form, hold_diarrhea: !form.hold_diarrhea })}>Hold on diarrhea</button>
