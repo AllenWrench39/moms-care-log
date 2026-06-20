@@ -28,7 +28,7 @@ export const DIARRHEA_WARNING =
   'HOLD: Furosemide, Spironolactone, Losartan, Mirabegron. Do NOT hold: Keppra, Carvedilol, Acyclovir, Levothyroxine.'
 
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Supplement']
-const FLUID_TYPES = ['Water', 'Coffee', 'Tea', 'Juice', 'Electrolytes', 'Soda', 'Milk', 'Broth', 'Other']
+const FLUID_TYPES = ['Water', 'Coffee', 'Tea', 'Juice', 'Electrolytes', 'Soda', 'Milk', 'Broth', 'D-Mannose', 'Other']
 const FLUID_GOAL_OZ = 64
 
 export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => string; myEmail: string }) {
