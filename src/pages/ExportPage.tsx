@@ -27,7 +27,7 @@ export default function ExportPage() {
       const { data } = await supabase.from('vital_readings').select('*').order('reading_date')
       ;(data ?? []).forEach((v) => rows.push([v.reading_date, clock(v.created_at), v.created_by, 'Vitals', v.kind.replace('_', ' '), v.value]))
       const { data: sym } = await supabase.from('day_symptoms').select('*').order('sym_date')
-      ;(sym ?? []).forEach((s) => rows.push([s.sym_date, '', s.created_by, 'Symptom', s.symptom, '']))
+      ;(sym ?? []).forEach((s) => rows.push([s.sym_date, clock(s.created_at), s.created_by, 'Symptom', s.symptom, '']))
     }
     if (want('meds')) {
       const [{ data: meds }, { data: doses }] = await Promise.all([

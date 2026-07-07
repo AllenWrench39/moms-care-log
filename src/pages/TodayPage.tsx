@@ -28,7 +28,7 @@ export const DIARRHEA_WARNING =
   'HOLD: Furosemide, Spironolactone, Losartan, Mirabegron. Do NOT hold: Keppra, Carvedilol, Acyclovir, Levothyroxine.'
 
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Supplement']
-const FLUID_TYPES = ['Water', 'Coffee', 'Tea', 'Juice', 'Electrolytes', 'Soda', 'Milk', 'Broth', 'D-Mannose', 'Other']
+const FLUID_TYPES = ['Water', 'Coffee', 'Tea', 'Juice', 'Lemon Water', 'Electrolytes', 'Soda', 'Milk', 'Broth', 'D-Mannose', 'Other']
 const FLUID_GOAL_OZ = 64
 
 export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => string; myEmail: string }) {
@@ -51,6 +51,8 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   const [fluidType, setFluidType] = useState('Water')
   const [fluidOz, setFluidOz] = useState('8')
   const [newNote, setNewNote] = useState('')
+  const [symptomModalOpen, setSymptomModalOpen] = useState(false)
+  const [symptomTime, setSymptomTime] = useState('')
 
   async function load() {
     const [v, s, m, f, n] = await Promise.all([
@@ -110,10 +112,18 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
     load()
   }
 
-  async function toggleSymptom(symptom: string) {
-    const existing = symptoms.find((s) => s.symptom === symptom)
-    if (existing) await supabase.from('day_symptoms').delete().eq('id', existing.id)
-    else await supabase.from('day_symptoms').insert({ sym_date: today, symptom })
+  function openSymptomModal() {
+    const d = new Date()
+    setSymptomTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
+    setSymptomModalOpen(true)
+  }
+
+  async function logSymptom(symptom: string) {
+    const d = new Date()
+    const [hh, mm] = symptomTime.split(':').map(Number)
+    if (!isNaN(hh) && !isNaN(mm)) d.setHours(hh, mm, 0, 0)
+    await supabase.from('day_symptoms').insert({ sym_date: today, symptom, created_at: d.toISOString() })
+    toast.show(`${symptom} logged ✓`)
     load()
   }
 
@@ -214,16 +224,17 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
 
       <div className="sec sec-red">
         <div className="sec-title">⚠️ Symptoms</div>
-        <div className="chips">
-          {SYMPTOMS.map((s) => {
-            const on = symptoms.some((x) => x.symptom === s)
-            return (
-              <button key={s} className={`chip ${on ? 'on-red' : ''}`} onClick={() => toggleSymptom(s)}>
-                {s}
-              </button>
-            )
-          })}
-        </div>
+        <button onClick={openSymptomModal}>+ Add Symptom</button>
+        {symptoms.length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            {[...symptoms].reverse().map((s) => (
+              <div className="feed-item" key={s.id}>
+                <span><b>{s.symptom}</b> <span className="faint">{fmtClock(s.created_at)} · {nameOf(s.created_by)}</span></span>
+                <button className="danger" onClick={() => del('day_symptoms', s.id)}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
         {hasDiarrhea && (
           <div className="warn" style={{ marginTop: 10, marginBottom: 0 }}>
             ⚠️ <b>Diarrhea/Vomiting flagged.</b> {DIARRHEA_WARNING}
@@ -299,6 +310,22 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
           </div>
         ))}
       </div>
+
+      {symptomModalOpen && (
+        <div className="modal-back" onClick={() => setSymptomModalOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 'bold', fontSize: 15, marginBottom: 12 }}>Log a symptom</div>
+            <label>Time</label>
+            <input type="time" value={symptomTime} onChange={(e) => setSymptomTime(e.target.value)} style={{ marginBottom: 14 }} />
+            <div className="chips" style={{ marginBottom: 14 }}>
+              {SYMPTOMS.map((s) => (
+                <button key={s} className="chip" onClick={() => logSymptom(s)}>{s}</button>
+              ))}
+            </div>
+            <button className="secondary" style={{ width: '100%' }} onClick={() => setSymptomModalOpen(false)}>Done</button>
+          </div>
+        </div>
+      )}
 
       {toast.node}
     </>
