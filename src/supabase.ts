@@ -31,6 +31,7 @@ export type DaySymptom = {
   id: string
   sym_date: string
   symptom: string
+  created_at: string
   created_by: string
 }
 

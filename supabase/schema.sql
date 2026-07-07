@@ -66,14 +66,15 @@ create table public.vital_readings (
 create index on public.vital_readings (reading_date, kind);
 call public.family_policy('vital_readings');
 
--- ---------- Symptoms (toggled per day) ----------
+-- ---------- Symptoms (logged with a time, multiple per day) ----------
 create table public.day_symptoms (
   id uuid primary key default gen_random_uuid(),
   sym_date date not null,
   symptom text not null,
-  created_by text not null default lower(auth.jwt() ->> 'email'),
-  unique (sym_date, symptom)
+  created_at timestamptz not null default now(),
+  created_by text not null default lower(auth.jwt() ->> 'email')
 );
+create index on public.day_symptoms (sym_date);
 call public.family_policy('day_symptoms');
 
 -- ---------- Meals ----------

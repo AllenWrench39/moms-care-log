@@ -73,7 +73,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
     const d = selected
     Promise.all([
       supabase.from('vital_readings').select('*').eq('reading_date', d).order('created_at'),
-      supabase.from('day_symptoms').select('*').eq('sym_date', d),
+      supabase.from('day_symptoms').select('*').eq('sym_date', d).order('created_at'),
       supabase.from('meals').select('*').eq('meal_date', d).order('created_at'),
       supabase.from('fluids').select('*').eq('fluid_date', d).order('created_at'),
       supabase.from('log_entries').select('*').gte('created_at', d + 'T00:00:00').lt('created_at', d + 'T23:59:59').order('created_at'),
@@ -155,7 +155,9 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
               )
             )}
             {day.symptoms.length > 0 && (
-              <div style={{ fontSize: 13, padding: '3px 0' }}><b>Symptoms:</b> {day.symptoms.map((s) => s.symptom).join(', ')}</div>
+              <div style={{ fontSize: 13, padding: '3px 0' }}>
+                <b>Symptoms:</b> {[...day.symptoms].reverse().map((s) => `${s.symptom} (${fmtClock(s.created_at)})`).join(', ')}
+              </div>
             )}
           </div>
         )}
