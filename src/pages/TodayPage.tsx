@@ -19,7 +19,7 @@ const VITALS: { kind: string; label: string; ph: string }[] = [
 const VITAL_LABEL: Record<string, string> = Object.fromEntries(VITALS.map((v) => [v.kind, v.label]))
 
 export const SYMPTOMS = [
-  'Nausea', 'Vomiting', 'Diarrhea', 'Constipation', 'Dizziness', 'Shortness of breath',
+  'Nausea', 'Vomiting', 'Diarrhea', 'Constipation', 'Cramping', 'Dizziness', 'Shortness of breath',
   'Chest pain', 'Confusion', 'Fatigue', 'Swelling', 'Fall', 'No appetite',
   'Poor sleep', 'Headache', 'Weakness',
 ]
