@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { supabase, fmtDateShort, VitalReading, Fluid } from '../supabase'
 
@@ -43,6 +43,11 @@ export default function ChartsPage() {
     .map(([d, val]) => ({ date: fmtDateShort(d), bs: parseFloat(val) || null }))
     .filter((d) => d.bs)
 
+  const avg = (nums: number[]) => (nums.length ? Math.round(nums.reduce((a, b) => a + b, 0) / nums.length) : null)
+  const avgSys = avg(bpData.map((d) => d.sys as number))
+  const avgDia = avg(bpData.filter((d) => d.dia).map((d) => d.dia as number))
+  const avgBs = avg(bsData.map((d) => d.bs as number))
+
   const fluidTypes = [...new Set(fluids.map((f) => f.fluid_type))]
   const fluidDays = [...new Set(fluids.map((f) => f.fluid_date))].sort()
   const fluidData = fluidDays.map((d) => {
@@ -59,6 +64,11 @@ export default function ChartsPage() {
     <>
       <div className="sec sec-green">
         <div className="sec-title">🩺 Blood Pressure — last 30 days</div>
+        {avgSys != null && (
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+            30-day avg: <b>{avgSys}{avgDia != null ? `/${avgDia}` : ''}</b>
+          </div>
+        )}
         {bpData.length < 2 ? <NoData /> : (
           <ResponsiveContainer width="100%" height={190}>
             <LineChart data={bpData}>
@@ -67,6 +77,8 @@ export default function ChartsPage() {
               <YAxis domain={[50, 200]} tick={{ fontSize: 9 }} />
               <Tooltip />
               <Legend />
+              {avgSys != null && <ReferenceLine y={avgSys} stroke="#d9534f" strokeDasharray="4 4" strokeOpacity={0.6} />}
+              {avgDia != null && <ReferenceLine y={avgDia} stroke="#5b9bd5" strokeDasharray="4 4" strokeOpacity={0.6} />}
               <Line type="monotone" dataKey="sys" stroke="#d9534f" dot={{ r: 3 }} name="Systolic" connectNulls />
               <Line type="monotone" dataKey="dia" stroke="#5b9bd5" dot={{ r: 3 }} name="Diastolic" connectNulls />
             </LineChart>
@@ -76,6 +88,11 @@ export default function ChartsPage() {
 
       <div className="sec sec-orange">
         <div className="sec-title">🩸 Blood Sugar — last 30 days</div>
+        {avgBs != null && (
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+            30-day avg: <b>{avgBs} mg/dL</b>
+          </div>
+        )}
         {bsData.length < 2 ? <NoData /> : (
           <ResponsiveContainer width="100%" height={190}>
             <LineChart data={bsData}>
@@ -83,6 +100,7 @@ export default function ChartsPage() {
               <XAxis dataKey="date" tick={{ fontSize: 9 }} />
               <YAxis domain={[50, 300]} tick={{ fontSize: 9 }} />
               <Tooltip />
+              {avgBs != null && <ReferenceLine y={avgBs} stroke="#c17b4a" strokeDasharray="4 4" strokeOpacity={0.6} />}
               <Line type="monotone" dataKey="bs" stroke="#c17b4a" dot={{ r: 3 }} name="Blood Sugar mg/dL" connectNulls />
             </LineChart>
           </ResponsiveContainer>
