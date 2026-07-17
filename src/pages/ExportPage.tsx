@@ -36,7 +36,8 @@ export default function ExportPage() {
       ])
       ;(doses ?? []).forEach((d) => {
         const m = (meds ?? []).find((x) => x.id === d.medication_id)
-        const name = m ? `${m.name} ${m.dose ?? ''}`.trim() : 'Unknown'
+        const name = d.med_name ? `${d.med_name} ${d.med_dose ?? ''}`.trim()
+          : m ? `${m.name} ${m.dose ?? ''}`.trim() : 'Unknown'
         rows.push([
           d.dose_date, clock(d.created_at), d.created_by,
           d.status === 'given' ? 'Medication' : 'Medication HELD',
@@ -63,9 +64,9 @@ export default function ExportPage() {
       ])
       ;(pt ?? []).forEach((p) => {
         const e = (ex ?? []).find((x) => x.id === p.exercise_id)
-        const unit = e?.unit ?? 'sets_reps'
+        const unit = p.exercise_unit ?? e?.unit ?? 'sets_reps'
         const amount = unit === 'sets_reps' ? `${p.sets} sets x ${p.reps} reps` : unit === 'minutes' ? `${p.reps} min` : unit === 'feet' ? `${p.reps} ft` : String(p.reps)
-        rows.push([p.log_date, clock(p.created_at), p.created_by, 'PT', e?.name ?? 'Exercise', amount])
+        rows.push([p.log_date, clock(p.created_at), p.created_by, 'PT', p.exercise_name ?? e?.name ?? 'Exercise', amount])
       })
     }
     if (want('notes')) {

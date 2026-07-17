@@ -75,6 +75,8 @@ export type MedDose = {
   dose_time: string
   status: 'given' | 'held'
   hold_reason: string | null
+  med_name: string | null   // snapshot at logging time; null on pre-migration rows
+  med_dose: string | null
   created_at: string
   created_by: string
 }
@@ -112,6 +114,8 @@ export type PtLog = {
   log_date: string
   sets: number
   reps: number
+  exercise_name: string | null   // snapshot at logging time; null on pre-migration rows
+  exercise_unit: string | null
   created_at: string
   created_by: string
 }

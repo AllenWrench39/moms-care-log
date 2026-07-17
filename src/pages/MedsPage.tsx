@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { supabase, todayStr, fmtTime24, fmtClock, Medication, MedDose, PowderLog } from '../supabase'
+import { supabase, todayStr, fmtTime24, fmtClock, fmtDateFull, Medication, MedDose, PowderLog } from '../supabase'
 import { DIARRHEA_WARNING } from './TodayPage'
 import { useToast } from '../toast'
+import DayNav from '../DayNav'
 
 const POWDER_AMOUNTS = ['½ tsp', '1 tsp', '2 tsp', '½ tbsp', '1 tbsp', '2 tbsp']
 const POWDER_ITEMS = ['Fiber', 'MiraLAX'] as const
@@ -10,9 +11,9 @@ const HOLD_REASONS = ['Refused', 'Nausea/Vomiting', 'Diarrhea', 'Low BP', 'Low B
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function scheduledToday(med: Medication): boolean {
+function scheduledOn(med: Medication, date: string): boolean {
   if (!med.scheduled_days || med.scheduled_days.length === 0) return true
-  const dow = new Date().getDay()
+  const dow = new Date(date + 'T12:00:00').getDay()
   return med.scheduled_days.includes(dow)
 }
 
@@ -21,7 +22,8 @@ function fmtScheduledDays(days: number[]): string {
 }
 
 export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) {
-  const today = todayStr()
+  const [date, setDate] = useState(todayStr())
+  const isToday = date === todayStr()
   const toast = useToast()
   const [meds, setMeds] = useState<Medication[]>([])
   const [doses, setDoses] = useState<MedDose[]>([])
@@ -37,9 +39,9 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
   async function load() {
     const [m, d, s, pl] = await Promise.all([
       supabase.from('medications').select('*').eq('active', true).order('sort_order').order('name'),
-      supabase.from('med_doses').select('*').eq('dose_date', today),
-      supabase.from('day_symptoms').select('symptom').eq('sym_date', today),
-      supabase.from('powder_logs').select('*').eq('log_date', today).order('created_at'),
+      supabase.from('med_doses').select('*').eq('dose_date', date),
+      supabase.from('day_symptoms').select('symptom').eq('sym_date', date),
+      supabase.from('powder_logs').select('*').eq('log_date', date).order('created_at'),
     ])
     setMeds(m.data ?? [])
     setDoses(d.data ?? [])
@@ -48,7 +50,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
   }
 
   async function logPowder(item: 'Fiber' | 'MiraLAX', amount: string) {
-    await supabase.from('powder_logs').insert({ item, amount, log_date: today })
+    await supabase.from('powder_logs').insert({ item, amount, log_date: date })
     toast.show(`${item} ${amount} logged ✓`)
     setPowderPicker(null)
     load()
@@ -67,7 +69,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'med_doses' }, load)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [])
+  }, [date])
 
   const doseFor = (medId: string, time: string) =>
     doses.find((d) => d.medication_id === medId && d.dose_time === time)
@@ -79,7 +81,10 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
       toast.show('Unmarked')
     } else {
       if (existing) await supabase.from('med_doses').delete().eq('id', existing.id)
-      await supabase.from('med_doses').insert({ medication_id: med.id, dose_date: today, dose_time: time, status: 'given' })
+      await supabase.from('med_doses').insert({
+        medication_id: med.id, dose_date: date, dose_time: time, status: 'given',
+        med_name: med.name, med_dose: med.dose,
+      })
       toast.show('Med marked ✓')
     }
     load()
@@ -92,7 +97,10 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
     })
     if (pending.length === 0) return
     await supabase.from('med_doses').insert(
-      pending.map((med) => ({ medication_id: med.id, dose_date: today, dose_time: time, status: 'given' }))
+      pending.map((med) => ({
+        medication_id: med.id, dose_date: date, dose_time: time, status: 'given',
+        med_name: med.name, med_dose: med.dose,
+      }))
     )
     toast.show(`${pending.length} meds marked ✓`)
     load()
@@ -112,7 +120,8 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
     }
     if (existing) await supabase.from('med_doses').delete().eq('id', existing.id)
     await supabase.from('med_doses').insert({
-      medication_id: med.id, dose_date: today, dose_time: time, status: 'held', hold_reason: reason,
+      medication_id: med.id, dose_date: date, dose_time: time, status: 'held', hold_reason: reason,
+      med_name: med.name, med_dose: med.dose,
     })
     toast.show('Med held: ' + reason)
     load()
@@ -158,8 +167,12 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
 
   return (
     <>
+      <DayNav date={date} onChange={setDate} />
+      {!isToday && (
+        <div className="warn">⏪ Logging for <b>{fmtDateFull(date)}</b> — not today. Use this to fill in missed doses.</div>
+      )}
       {hasDiarrhea && (
-        <div className="warn">⚠️ <b>Diarrhea/Vomiting flagged today.</b> {DIARRHEA_WARNING}</div>
+        <div className="warn">⚠️ <b>Diarrhea/Vomiting flagged {isToday ? 'today' : 'this day'}.</b> {DIARRHEA_WARNING}</div>
       )}
       <div className="muted" style={{ marginBottom: 4 }}>
         Tap <b>Give</b> to mark given · <b>Hold</b> to log a skipped dose · tap again to undo.
@@ -205,7 +218,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
             const given = dose?.status === 'given'
             const held = dose?.status === 'held'
             const holdFlag = hasDiarrhea && med.hold_diarrhea && !given && !held
-            const notToday = !scheduledToday(med)
+            const notToday = !scheduledOn(med, date)
             return (
               <div className="med-row" key={med.id + time} style={notToday ? { opacity: 0.45 } : {}}>
                 <div className="row between top">
@@ -214,7 +227,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
                       {med.name} {med.dose && <span style={{ fontWeight: 'normal', fontSize: 13 }}>{med.dose}</span>}
                       {med.never_hold && <span className="badge" style={{ marginLeft: 5, background: 'var(--green-soft)', color: 'var(--green)' }}>DO NOT HOLD</span>}
                       {holdFlag && <span className="badge" style={{ marginLeft: 5, background: 'var(--amber-soft)', color: 'var(--amber-ink)' }}>⚠ HOLD TODAY?</span>}
-                      {notToday && <span className="badge" style={{ marginLeft: 5, background: 'var(--border)', color: 'var(--muted)' }}>Not today — {fmtScheduledDays(med.scheduled_days!)}</span>}
+                      {notToday && <span className="badge" style={{ marginLeft: 5, background: 'var(--border)', color: 'var(--muted)' }}>Not {isToday ? 'today' : 'this day'} — {fmtScheduledDays(med.scheduled_days!)}</span>}
                     </div>
                     {med.notes && <div className="med-note">{med.notes}</div>}
                     {given && dose && <div className="med-status" style={{ color: 'var(--green)' }}>✓ Given {fmtClock(dose.created_at)} by {nameOf(dose.created_by)}</div>}
