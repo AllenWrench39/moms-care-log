@@ -110,12 +110,16 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
     }
   }
 
-  const medName = (id: string) => {
-    const m = meds.find((x) => x.id === id)
+  // Prefer the snapshot stored on the log row so history stays static
+  // when a medication/exercise is later edited; fall back to a lookup
+  // for rows logged before snapshots existed.
+  const medName = (x: MedDose) => {
+    if (x.med_name) return `${x.med_name} ${x.med_dose ?? ''}`.trim()
+    const m = meds.find((y) => y.id === x.medication_id)
     return m ? `${m.name} ${m.dose ?? ''}`.trim() : 'Unknown med'
   }
-  const exName = (id: string) => exercises.find((x) => x.id === id)?.name ?? 'Exercise'
-  const exUnit = (id: string) => exercises.find((x) => x.id === id)?.unit ?? 'sets_reps'
+  const exName = (p: PtLog) => p.exercise_name ?? exercises.find((x) => x.id === p.exercise_id)?.name ?? 'Exercise'
+  const exUnit = (p: PtLog) => p.exercise_unit ?? exercises.find((x) => x.id === p.exercise_id)?.unit ?? 'sets_reps'
 
   if (selected && day) {
     const totalOz = day.fluids.reduce((s, f) => s + Number(f.oz), 0)
@@ -186,7 +190,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
           <div className="sec sec-green">
             <div className="sec-title">Meds Given</div>
             {given.map((x) => (
-              <div key={x.id} style={{ fontSize: 13, padding: '3px 0' }}>✓ {medName(x.medication_id)} @ {fmtTime24(x.dose_time)} <span className="faint">{fmtClock(x.created_at)} · {nameOf(x.created_by)}</span></div>
+              <div key={x.id} style={{ fontSize: 13, padding: '3px 0' }}>✓ {medName(x)} @ {fmtTime24(x.dose_time)} <span className="faint">{fmtClock(x.created_at)} · {nameOf(x.created_by)}</span></div>
             ))}
           </div>
         )}
@@ -195,7 +199,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
           <div className="sec sec-red">
             <div className="sec-title">Meds Held</div>
             {held.map((x) => (
-              <div key={x.id} style={{ fontSize: 13, padding: '3px 0', color: 'var(--red)' }}>⏸ {medName(x.medication_id)} @ {fmtTime24(x.dose_time)} — {x.hold_reason} <span className="faint">{nameOf(x.created_by)}</span></div>
+              <div key={x.id} style={{ fontSize: 13, padding: '3px 0', color: 'var(--red)' }}>⏸ {medName(x)} @ {fmtTime24(x.dose_time)} — {x.hold_reason} <span className="faint">{nameOf(x.created_by)}</span></div>
             ))}
           </div>
         )}
@@ -218,10 +222,10 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
             <div className="sec-title">🏋️ Physical Therapy</div>
             {day.pt.map((p) => (
               <div key={p.id} style={{ fontSize: 13, padding: '3px 0' }}>
-                {exName(p.exercise_id)}: {
-                  exUnit(p.exercise_id) === 'sets_reps' ? `${p.sets} × ${p.reps}` :
-                  exUnit(p.exercise_id) === 'minutes' ? `${p.reps} min` :
-                  exUnit(p.exercise_id) === 'feet' ? `${p.reps} ft` : `${p.reps}`
+                {exName(p)}: {
+                  exUnit(p) === 'sets_reps' ? `${p.sets} × ${p.reps}` :
+                  exUnit(p) === 'minutes' ? `${p.reps} min` :
+                  exUnit(p) === 'feet' ? `${p.reps} ft` : `${p.reps}`
                 } <span className="faint">{nameOf(p.created_by)}</span>
               </div>
             ))}

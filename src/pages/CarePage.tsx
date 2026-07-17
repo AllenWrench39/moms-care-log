@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { supabase, todayStr, fmtClock, CareEvent, PtExercise, PtLog } from '../supabase'
+import { supabase, todayStr, fmtClock, fmtDateFull, CareEvent, PtExercise, PtLog } from '../supabase'
 import { useToast } from '../toast'
+import DayNav from '../DayNav'
 
 const BM_SIZES = ['Small', 'Medium', 'Large']
 const BM_TYPES = ['Normal', 'Loose', 'Diarrhea', 'Hard', 'Watery']
@@ -34,6 +35,7 @@ const BLANK_FORM = { name: '', unit: 'sets_reps' as PtExercise['unit'], target_s
 export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) {
   const today = todayStr()
   const toast = useToast()
+  const [ptDate, setPtDate] = useState(todayStr())
   const [events, setEvents] = useState<CareEvent[]>([])
   const [exercises, setExercises] = useState<PtExercise[]>([])
   const [ptLogs, setPtLogs] = useState<PtLog[]>([])
@@ -48,7 +50,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
     const [e, x, p] = await Promise.all([
       supabase.from('care_events').select('*').eq('event_date', today).order('created_at'),
       supabase.from('pt_exercises').select('*').eq('active', true).order('name'),
-      supabase.from('pt_logs').select('*').eq('log_date', today),
+      supabase.from('pt_logs').select('*').eq('log_date', ptDate),
     ])
     setEvents(e.data ?? [])
     setExercises(x.data ?? [])
@@ -62,7 +64,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'care_events' }, load)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [])
+  }, [ptDate])
 
   async function addEvent(kind: CareEvent['kind'], detail: string, msg: string) {
     await supabase.from('care_events').insert({ event_date: today, kind, detail })
@@ -78,14 +80,15 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
 
   async function logPt(ex: PtExercise) {
     const input = ptInput[ex.id] ?? { sets: String(ex.target_sets ?? 1), reps: String(ex.target_reps ?? 10) }
+    const snapshot = { exercise_name: ex.name, exercise_unit: ex.unit }
     if (ex.unit === 'sets_reps') {
       const sets = parseInt(input.sets), reps = parseInt(input.reps)
       if (!sets || !reps) return
-      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: today, sets, reps })
+      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: ptDate, sets, reps, ...snapshot })
     } else {
       const val = parseInt(input.reps)
       if (!val) return
-      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: today, sets: 1, reps: val })
+      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: ptDate, sets: 1, reps: val, ...snapshot })
     }
     toast.show('PT logged ✓')
     load()
@@ -191,6 +194,10 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
 
       <div className="sec sec-green">
         <div className="sec-title">🏋️ Physical Therapy</div>
+        <DayNav date={ptDate} onChange={setPtDate} />
+        {ptDate !== today && (
+          <div className="warn">⏪ Logging PT for <b>{fmtDateFull(ptDate)}</b> — not today.</div>
+        )}
         {exercises.map((ex) => {
           const done = ptLogs.filter((p) => p.exercise_id === ex.id)
           const input = ptInput[ex.id] ?? { sets: String(ex.target_sets ?? 1), reps: String(ex.target_reps ?? 10) }
