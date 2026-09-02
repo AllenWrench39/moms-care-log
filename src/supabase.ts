@@ -180,3 +180,32 @@ export function fmtDateShort(d: string) {
 export function fmtDateFull(d: string) {
   return new Date(d + 'T12:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+// Timestamp for a log entered against an earlier day. Returns undefined for
+// today so the DB `now()` default (with real seconds) is used instead.
+export function stampFor(date: string, hhmm: string): string | undefined {
+  if (date === todayStr()) return undefined
+  const [h, m] = (hhmm || '').split(':').map(Number)
+  const d = new Date(date + 'T12:00:00')
+  if (!isNaN(h) && !isNaN(m)) d.setHours(h, m, 0, 0)
+  return d.toISOString()
+}
+
+// Spreads `created_at` into an insert payload only when backdating.
+export function stamp(date: string, hhmm: string): { created_at?: string } {
+  const at = stampFor(date, hhmm)
+  return at ? { created_at: at } : {}
+}
+
+// Local midnight of a date, as an ISO instant — for filtering timestamp
+// columns (log_entries) down to one calendar day.
+export function dayStart(date: string) {
+  const d = new Date(date + 'T12:00:00')
+  d.setHours(0, 0, 0, 0)
+  return d.toISOString()
+}
+
+export function nowHHMM() {
+  const d = new Date()
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
