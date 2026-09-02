@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase, todayStr, fmtClock, fmtDateFull, CareEvent, PtExercise, PtLog } from '../supabase'
+import { supabase, todayStr, fmtClock, fmtDateFull, stamp, nowHHMM, CareEvent, PtExercise, PtLog } from '../supabase'
 import { useToast } from '../toast'
 import DayNav from '../DayNav'
 
@@ -35,7 +35,9 @@ const BLANK_FORM = { name: '', unit: 'sets_reps' as PtExercise['unit'], target_s
 export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) {
   const today = todayStr()
   const toast = useToast()
-  const [ptDate, setPtDate] = useState(todayStr())
+  const [date, setDate] = useState(todayStr())
+  const [time, setTime] = useState(nowHHMM())
+  const isToday = date === today
   const [events, setEvents] = useState<CareEvent[]>([])
   const [exercises, setExercises] = useState<PtExercise[]>([])
   const [ptLogs, setPtLogs] = useState<PtLog[]>([])
@@ -48,9 +50,9 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
 
   async function load() {
     const [e, x, p] = await Promise.all([
-      supabase.from('care_events').select('*').eq('event_date', today).order('created_at'),
+      supabase.from('care_events').select('*').eq('event_date', date).order('created_at'),
       supabase.from('pt_exercises').select('*').eq('active', true).order('name'),
-      supabase.from('pt_logs').select('*').eq('log_date', ptDate),
+      supabase.from('pt_logs').select('*').eq('log_date', date),
     ])
     setEvents(e.data ?? [])
     setExercises(x.data ?? [])
@@ -64,10 +66,10 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'care_events' }, load)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [ptDate])
+  }, [date])
 
   async function addEvent(kind: CareEvent['kind'], detail: string, msg: string) {
-    await supabase.from('care_events').insert({ event_date: today, kind, detail })
+    await supabase.from('care_events').insert({ event_date: date, kind, detail, ...stamp(date, time) })
     toast.show(msg)
     load()
   }
@@ -84,11 +86,11 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
     if (ex.unit === 'sets_reps') {
       const sets = parseInt(input.sets), reps = parseInt(input.reps)
       if (!sets || !reps) return
-      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: ptDate, sets, reps, ...snapshot })
+      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: date, sets, reps, ...snapshot, ...stamp(date, time) })
     } else {
       const val = parseInt(input.reps)
       if (!val) return
-      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: ptDate, sets: 1, reps: val, ...snapshot })
+      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: date, sets: 1, reps: val, ...snapshot, ...stamp(date, time) })
     }
     toast.show('PT logged ✓')
     load()
@@ -145,6 +147,11 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
 
   return (
     <>
+      <DayNav date={date} onChange={setDate} time={time} onTimeChange={setTime} />
+      {!isToday && (
+        <div className="warn">⏪ Logging for <b>{fmtDateFull(date)}</b> — not today. Everything on this tab is saved to that day.</div>
+      )}
+
       <div className="sec sec-orange">
         <div className="sec-title">💩 Bowel Movement</div>
         <label>Size</label>
@@ -171,7 +178,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
 
       <div className="sec sec-blue">
         <div className="sec-title">🛁 Hygiene</div>
-        <div className="muted" style={{ marginBottom: 8 }}>Tap to log each task done today.</div>
+        <div className="muted" style={{ marginBottom: 8 }}>Tap to log each task done.</div>
         <div className="chips">
           {HYGIENE_ITEMS.map((h) => (
             <button key={h} className={`chip ${byKind('hygiene').some((e) => e.detail === h) ? 'on-blue' : ''}`}
@@ -194,10 +201,6 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
 
       <div className="sec sec-green">
         <div className="sec-title">🏋️ Physical Therapy</div>
-        <DayNav date={ptDate} onChange={setPtDate} />
-        {ptDate !== today && (
-          <div className="warn">⏪ Logging PT for <b>{fmtDateFull(ptDate)}</b> — not today.</div>
-        )}
         {exercises.map((ex) => {
           const done = ptLogs.filter((p) => p.exercise_id === ex.id)
           const input = ptInput[ex.id] ?? { sets: String(ex.target_sets ?? 1), reps: String(ex.target_reps ?? 10) }

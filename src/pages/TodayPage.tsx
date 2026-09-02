@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
-  supabase, todayStr, fmtClock,
+  supabase, todayStr, fmtClock, fmtDateFull, stamp, dayStart, nowHHMM,
   VitalReading, DaySymptom, Meal, Fluid, LogEntry,
 } from '../supabase'
 import { useToast } from '../toast'
+import DayNav, { shiftDay } from '../DayNav'
 
 const VITALS: { kind: string; label: string; ph: string }[] = [
   { kind: 'bp', label: 'Blood Pressure', ph: '120/80' },
@@ -34,6 +35,9 @@ const FLUID_GOAL_OZ = 64
 export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => string; myEmail: string }) {
   const today = todayStr()
   const toast = useToast()
+  const [date, setDate] = useState(todayStr())
+  const [time, setTime] = useState(nowHHMM())
+  const isToday = date === today
 
   const [vitals, setVitals] = useState<VitalReading[]>([])
   const [symptoms, setSymptoms] = useState<DaySymptom[]>([])
@@ -56,11 +60,13 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
 
   async function load() {
     const [v, s, m, f, n] = await Promise.all([
-      supabase.from('vital_readings').select('*').eq('reading_date', today).order('created_at'),
-      supabase.from('day_symptoms').select('*').eq('sym_date', today),
-      supabase.from('meals').select('*').eq('meal_date', today).order('created_at'),
-      supabase.from('fluids').select('*').eq('fluid_date', today).order('created_at'),
-      supabase.from('log_entries').select('*').gte('created_at', today + 'T00:00:00').order('created_at', { ascending: false }),
+      supabase.from('vital_readings').select('*').eq('reading_date', date).order('created_at'),
+      supabase.from('day_symptoms').select('*').eq('sym_date', date),
+      supabase.from('meals').select('*').eq('meal_date', date).order('created_at'),
+      supabase.from('fluids').select('*').eq('fluid_date', date).order('created_at'),
+      supabase.from('log_entries').select('*')
+        .gte('created_at', dayStart(date)).lt('created_at', dayStart(shiftDay(date, 1)))
+        .order('created_at', { ascending: false }),
     ])
     setVitals(v.data ?? [])
     setSymptoms(s.data ?? [])
@@ -78,7 +84,7 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'log_entries' }, load)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
-  }, [])
+  }, [date])
 
   // latest reading per vital kind today
   const latest = (kind: string) => [...vitals].reverse().find((v) => v.kind === kind)
@@ -86,7 +92,7 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   async function saveVital(kind: string) {
     const value = (vitalInputs[kind] ?? '').trim()
     if (!value) return
-    await supabase.from('vital_readings').insert({ reading_date: today, kind, value })
+    await supabase.from('vital_readings').insert({ reading_date: date, kind, value, ...stamp(date, time) })
     setVitalInputs({ ...vitalInputs, [kind]: '' })
     toast.show('Reading saved ✓')
     load()
@@ -113,16 +119,15 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   }
 
   function openSymptomModal() {
-    const d = new Date()
-    setSymptomTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
+    setSymptomTime(isToday ? nowHHMM() : time)
     setSymptomModalOpen(true)
   }
 
   async function logSymptom(symptom: string) {
-    const d = new Date()
+    const d = new Date(date + 'T12:00:00')
     const [hh, mm] = symptomTime.split(':').map(Number)
     if (!isNaN(hh) && !isNaN(mm)) d.setHours(hh, mm, 0, 0)
-    await supabase.from('day_symptoms').insert({ sym_date: today, symptom, created_at: d.toISOString() })
+    await supabase.from('day_symptoms').insert({ sym_date: date, symptom, created_at: d.toISOString() })
     toast.show(`${symptom} logged ✓`)
     load()
   }
@@ -130,7 +135,8 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   async function addMeal() {
     if (!mealDesc.trim()) return
     await supabase.from('meals').insert({
-      meal_date: today, meal_type: mealType, description: mealDesc.trim(), amount: mealAmt.trim() || null,
+      meal_date: date, meal_type: mealType, description: mealDesc.trim(), amount: mealAmt.trim() || null,
+      ...stamp(date, time),
     })
     setMealDesc(''); setMealAmt('')
     toast.show('Meal logged ✓')
@@ -140,14 +146,14 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   async function addFluid(oz: string) {
     const n = parseFloat(oz)
     if (!n || n <= 0) return
-    await supabase.from('fluids').insert({ fluid_date: today, fluid_type: fluidType, oz: n })
+    await supabase.from('fluids').insert({ fluid_date: date, fluid_type: fluidType, oz: n, ...stamp(date, time) })
     toast.show(`${n} oz ${fluidType} ✓`)
     load()
   }
 
   async function addNote() {
     if (!newNote.trim()) return
-    await supabase.from('log_entries').insert({ note: newNote.trim() })
+    await supabase.from('log_entries').insert({ note: newNote.trim(), ...stamp(date, time) })
     setNewNote('')
     toast.show('Note saved ✓')
     load()
@@ -164,6 +170,11 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
 
   return (
     <>
+      <DayNav date={date} onChange={setDate} time={time} onTimeChange={setTime} />
+      {!isToday && (
+        <div className="warn">⏪ Logging for <b>{fmtDateFull(date)}</b> — not today. Everything on this tab is saved to that day.</div>
+      )}
+
       <div className="sec sec-green">
         <div className="sec-title">📊 Vitals</div>
         <div className="vgrid">
@@ -267,7 +278,7 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
       </div>
 
       <div className="sec sec-blue">
-        <div className="sec-title">💧 Fluids — {totalOz} oz today</div>
+        <div className="sec-title">💧 Fluids — {totalOz} oz {isToday ? 'today' : 'that day'}</div>
         <div className="progress"><div style={{ width: Math.min(100, (totalOz / FLUID_GOAL_OZ) * 100) + '%' }} /></div>
         <div className="faint" style={{ margin: '3px 0 9px' }}>{totalOz}/{FLUID_GOAL_OZ} oz goal</div>
         <div className="chips" style={{ marginBottom: 9 }}>
