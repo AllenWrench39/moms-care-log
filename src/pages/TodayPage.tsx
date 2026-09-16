@@ -5,6 +5,7 @@ import {
 } from '../supabase'
 import { useToast } from '../toast'
 import DayNav, { shiftDay } from '../DayNav'
+import UtiWatch from '../UtiWatch'
 
 const VITALS: { kind: string; label: string; ph: string }[] = [
   { kind: 'bp', label: 'Blood Pressure', ph: '120/80' },
@@ -174,6 +175,8 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
       {!isToday && (
         <div className="warn">⏪ Logging for <b>{fmtDateFull(date)}</b> — not today. Everything on this tab is saved to that day.</div>
       )}
+
+      <UtiWatch date={date} />
 
       <div className="sec sec-green">
         <div className="sec-title">📊 Vitals</div>

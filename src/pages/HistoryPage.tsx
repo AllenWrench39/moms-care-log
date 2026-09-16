@@ -62,7 +62,13 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
       })
       Object.entries(givenCount).forEach(([date, n]) => push(date, `💊 ${n}`))
       Object.entries(heldCount).forEach(([date, n]) => push(date, `⏸ ${n} held`))
-      ;(c.data ?? []).forEach((r) => { if (r.kind === 'bm') push(r.event_date, '💩') })
+      const voids: Record<string, number> = {}
+      ;(c.data ?? []).forEach((r) => {
+        if (r.kind === 'bm') push(r.event_date, '💩')
+        if (r.kind === 'urine') voids[r.event_date] = (voids[r.event_date] || 0) + 1
+        if (r.kind === 'urine_symptom') push(r.event_date, '🚽')
+      })
+      Object.entries(voids).forEach(([date, n]) => push(date, `💛 ${n}`))
       setSummaries(tags)
       setDays(Object.keys(tags).sort().reverse())
     })
@@ -127,6 +133,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
     const held = day.doses.filter((x) => x.status === 'held')
     const careKinds: { kind: string; label: string }[] = [
       { kind: 'bm', label: '💩 Bowel Movements' }, { kind: 'urine', label: '💛 Urine' },
+      { kind: 'urine_symptom', label: '🚽 Urinary Symptoms' }, { kind: 'pad', label: '🛏 Pad Changes' },
       { kind: 'hygiene', label: '🛁 Hygiene' }, { kind: 'cleaning', label: '🧹 Cleaning' },
     ]
     return (
