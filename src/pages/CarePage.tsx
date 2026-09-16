@@ -2,10 +2,17 @@ import { useEffect, useState } from 'react'
 import { supabase, todayStr, fmtClock, fmtDateFull, stamp, nowHHMM, CareEvent, PtExercise, PtLog } from '../supabase'
 import { useToast } from '../toast'
 import DayNav from '../DayNav'
+import UtiWatch, { URINE_FLAGS } from '../UtiWatch'
 
 const BM_SIZES = ['Small', 'Medium', 'Large']
 const BM_TYPES = ['Normal', 'Loose', 'Diarrhea', 'Hard', 'Watery']
 const URINE_COLORS = ['Clear', 'Pale Yellow', 'Dark Yellow', 'Amber', 'Orange', 'Pink/Red', 'Brown']
+const URINE_SYMPTOMS = [
+  'Burning', 'Urgency', 'Frequency', 'Straining', 'Only a little came out',
+  'Incontinence/accident', 'Pain', 'Holding it / could not go',
+]
+const PAD_TYPES = ['Bed/Chair Pad', 'Pamper Pad']
+const DAMPNESS = ['Dry', 'Damp', 'Wet', 'Soaked']
 const HYGIENE_ITEMS = ['Bed Bath', 'Shower', 'Hair Wash', 'Nail Care', 'Oral Care', 'Skin Care', 'Pad Change', 'Repositioned']
 const CLEANING_ITEMS = ['Bed Linens', 'Room Clean', 'Bathroom', 'Laundry', 'Trash', 'Floor Mop', 'Dishes', 'Supply Restock']
 
@@ -41,6 +48,8 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
   const [events, setEvents] = useState<CareEvent[]>([])
   const [exercises, setExercises] = useState<PtExercise[]>([])
   const [ptLogs, setPtLogs] = useState<PtLog[]>([])
+  const [urineFlags, setUrineFlags] = useState<string[]>([])
+  const [padTarget, setPadTarget] = useState<string | null>(null)
   const [bmSize, setBmSize] = useState('Medium')
   const [bmType, setBmType] = useState('Normal')
   const [ptInput, setPtInput] = useState<Record<string, { sets: string; reps: string }>>({})
@@ -72,6 +81,22 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
     await supabase.from('care_events').insert({ event_date: date, kind, detail, ...stamp(date, time) })
     toast.show(msg)
     load()
+  }
+
+  // Color plus whatever character flags are toggled, e.g. "Amber · Cloudy · Strong odor"
+  async function logUrine(color: string) {
+    await addEvent('urine', [color, ...urineFlags].join(' · '), 'Urine logged ✓')
+    setUrineFlags([])
+  }
+
+  function toggleFlag(f: string) {
+    setUrineFlags(urineFlags.includes(f) ? urineFlags.filter((x) => x !== f) : [...urineFlags, f])
+  }
+
+  async function logPad(damp: string) {
+    if (!padTarget) return
+    await addEvent('pad', `${padTarget} · ${damp}`, `${padTarget} — ${damp} ✓`)
+    setPadTarget(null)
   }
 
   async function del(table: string, id: string) {
@@ -152,6 +177,8 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
         <div className="warn">⏪ Logging for <b>{fmtDateFull(date)}</b> — not today. Everything on this tab is saved to that day.</div>
       )}
 
+      <UtiWatch date={date} />
+
       <div className="sec sec-orange">
         <div className="sec-title">💩 Bowel Movement</div>
         <label>Size</label>
@@ -167,13 +194,42 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
       </div>
 
       <div className="sec sec-yellow">
-        <div className="sec-title">💛 Urine</div>
+        <div className="sec-title">💛 Urine — {byKind('urine').length} {byKind('urine').length === 1 ? 'time' : 'times'}</div>
+        <label>Anything unusual? (tap any that apply, then pick the color)</label>
+        <div className="chips" style={{ marginBottom: 10 }}>
+          {URINE_FLAGS.map((f) => (
+            <button key={f} className={`chip ${urineFlags.includes(f) ? 'on' : ''}`} onClick={() => toggleFlag(f)}>{f}</button>
+          ))}
+        </div>
+        <label>Color — tap to log</label>
         <div className="chips">
           {URINE_COLORS.map((c) => (
-            <button key={c} className="chip" onClick={() => addEvent('urine', c, 'Urine logged ✓')}>{c}</button>
+            <button key={c} className="chip" onClick={() => logUrine(c)}>{c}</button>
           ))}
         </div>
         <EventList kind="urine" />
+      </div>
+
+      <div className="sec sec-red">
+        <div className="sec-title">🚽 Urinary Symptoms</div>
+        <div className="muted" style={{ marginBottom: 8 }}>Tap anything she has trouble with — these are the early UTI signs.</div>
+        <div className="chips">
+          {URINE_SYMPTOMS.map((u) => (
+            <button key={u} className="chip" onClick={() => addEvent('urine_symptom', u, u + ' logged ✓')}>{u}</button>
+          ))}
+        </div>
+        <EventList kind="urine_symptom" />
+      </div>
+
+      <div className="sec sec-blue">
+        <div className="sec-title">🛏 Pad Changes</div>
+        <div className="muted" style={{ marginBottom: 8 }}>Pick which pad, then how wet it was.</div>
+        <div className="chips">
+          {PAD_TYPES.map((t) => (
+            <button key={t} className="chip" onClick={() => setPadTarget(t)}>{t}</button>
+          ))}
+        </div>
+        <EventList kind="pad" />
       </div>
 
       <div className="sec sec-blue">
@@ -304,6 +360,21 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
           </div>
         )}
       </div>
+
+      {padTarget && (
+        <div className="modal-back" onClick={() => setPadTarget(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 'bold', fontSize: 15, marginBottom: 4 }}>{padTarget}</div>
+            <div className="muted" style={{ marginBottom: 12 }}>How wet was it?</div>
+            <div className="chips" style={{ marginBottom: 14 }}>
+              {DAMPNESS.map((d) => (
+                <button key={d} className="chip" onClick={() => logPad(d)}>{d}</button>
+              ))}
+            </div>
+            <button className="secondary" style={{ width: '100%' }} onClick={() => setPadTarget(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {toast.node}
     </>
