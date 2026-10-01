@@ -6,6 +6,7 @@ import {
 import { useToast } from '../toast'
 import DayNav, { shiftDay } from '../DayNav'
 import UtiWatch from '../UtiWatch'
+import { PillFillBanner } from '../PillFill'
 
 const VITALS: { kind: string; label: string; ph: string }[] = [
   { kind: 'bp', label: 'Blood Pressure', ph: '120/80' },
@@ -177,6 +178,7 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
       )}
 
       <UtiWatch date={date} />
+      {isToday && <PillFillBanner />}
 
       <div className="sec sec-green">
         <div className="sec-title">📊 Vitals</div>
