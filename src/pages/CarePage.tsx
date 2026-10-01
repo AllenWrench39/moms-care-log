@@ -188,9 +188,12 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
       <UtiWatch date={date} />
 
       <div className="sec sec-orange">
-        <div className="sec-title">💩 Bowel Movement — {bmWeek} in the last 7 days</div>
+        <div className="sec-title">
+          💩 Bowel Movement — {bmWeek} in the last 7 days · {(bmWeek / 7).toFixed(1)}/day
+        </div>
         <div className="faint" style={{ marginBottom: 8 }}>
           {byKind('bm').length} {isToday ? 'today' : 'this day'} · {shiftDay(date, -6).slice(5)} to {date.slice(5)}
+          {bmWeek > 0 && ` · about 1 every ${(7 / bmWeek).toFixed(1)} days`}
         </div>
         <label>Size</label>
         <div className="chips" style={{ marginBottom: 8 }}>
