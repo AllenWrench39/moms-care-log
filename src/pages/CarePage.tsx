@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react'
 import { supabase, todayStr, fmtClock, fmtDateFull, stamp, nowHHMM, CareEvent, PtExercise, PtLog } from '../supabase'
 import { useToast } from '../toast'
-import DayNav from '../DayNav'
+import DayNav, { shiftDay } from '../DayNav'
 import UtiWatch, { URINE_FLAGS } from '../UtiWatch'
 
 const BM_SIZES = ['Small', 'Medium', 'Large']
-const BM_TYPES = ['Normal', 'Loose', 'Diarrhea', 'Hard', 'Watery']
+const BM_TYPES = ['Normal', 'Soft', 'Loose', 'Diarrhea', 'Hard', 'Watery']
 const URINE_COLORS = ['Clear', 'Pale Yellow', 'Dark Yellow', 'Amber', 'Orange', 'Pink/Red', 'Brown']
 const URINE_SYMPTOMS = [
   'Burning', 'Urgency', 'Frequency', 'Straining', 'Only a little came out',
   'Incontinence/accident', 'Pain', 'Holding it / could not go',
+  'Leaning left/right too heavily',
 ]
 const PAD_TYPES = ['Bed/Chair Pad', 'Pamper Pad']
 const DAMPNESS = ['Dry', 'Damp', 'Wet', 'Soaked']
+// Pamper pads can also catch a BM, so that pad gets an extra choice.
+const PAMPER_EXTRA = ['Poop', 'Wet + Poop']
 const HYGIENE_ITEMS = ['Bed Bath', 'Shower', 'Hair Wash', 'Nail Care', 'Oral Care', 'Skin Care', 'Pad Change', 'Repositioned']
 const CLEANING_ITEMS = ['Bed Linens', 'Room Clean', 'Bathroom', 'Laundry', 'Trash', 'Floor Mop', 'Dishes', 'Supply Restock']
 
@@ -48,6 +51,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
   const [events, setEvents] = useState<CareEvent[]>([])
   const [exercises, setExercises] = useState<PtExercise[]>([])
   const [ptLogs, setPtLogs] = useState<PtLog[]>([])
+  const [bmWeek, setBmWeek] = useState(0)
   const [urineFlags, setUrineFlags] = useState<string[]>([])
   const [padTarget, setPadTarget] = useState<string | null>(null)
   const [bmSize, setBmSize] = useState('Medium')
@@ -58,14 +62,18 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
   const [editingEx, setEditingEx] = useState<PtExercise | null>(null)
 
   async function load() {
-    const [e, x, p] = await Promise.all([
+    const [e, x, p, bm] = await Promise.all([
       supabase.from('care_events').select('*').eq('event_date', date).order('created_at'),
       supabase.from('pt_exercises').select('*').eq('active', true).order('name'),
       supabase.from('pt_logs').select('*').eq('log_date', date),
+      // Rolling 7 days ending on the day being viewed, this day included.
+      supabase.from('care_events').select('id', { count: 'exact', head: true })
+        .eq('kind', 'bm').gte('event_date', shiftDay(date, -6)).lte('event_date', date),
     ])
     setEvents(e.data ?? [])
     setExercises(x.data ?? [])
     setPtLogs(p.data ?? [])
+    setBmWeek(bm.count ?? 0)
   }
 
   useEffect(() => {
@@ -180,7 +188,10 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
       <UtiWatch date={date} />
 
       <div className="sec sec-orange">
-        <div className="sec-title">💩 Bowel Movement</div>
+        <div className="sec-title">💩 Bowel Movement — {bmWeek} in the last 7 days</div>
+        <div className="faint" style={{ marginBottom: 8 }}>
+          {byKind('bm').length} {isToday ? 'today' : 'this day'} · {shiftDay(date, -6).slice(5)} to {date.slice(5)}
+        </div>
         <label>Size</label>
         <div className="chips" style={{ marginBottom: 8 }}>
           {BM_SIZES.map((s) => <button key={s} className={`chip ${bmSize === s ? 'on' : ''}`} onClick={() => setBmSize(s)}>{s}</button>)}
@@ -369,6 +380,9 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
             <div className="chips" style={{ marginBottom: 14 }}>
               {DAMPNESS.map((d) => (
                 <button key={d} className="chip" onClick={() => logPad(d)}>{d}</button>
+              ))}
+              {padTarget === 'Pamper Pad' && PAMPER_EXTRA.map((d) => (
+                <button key={d} className="chip" onClick={() => logPad(d)}>💩 {d}</button>
               ))}
             </div>
             <button className="secondary" style={{ width: '100%' }} onClick={() => setPadTarget(null)}>Cancel</button>
