@@ -135,6 +135,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
       { kind: 'bm', label: '💩 Bowel Movements' }, { kind: 'urine', label: '💛 Urine' },
       { kind: 'urine_symptom', label: '🚽 Urinary Symptoms' }, { kind: 'pad', label: '🛏 Pad Changes' },
       { kind: 'hygiene', label: '🛁 Hygiene' }, { kind: 'cleaning', label: '🧹 Cleaning' },
+      { kind: 'pill_fill', label: '💊 Pill Box Fills' },
     ]
     return (
       <>

@@ -93,7 +93,7 @@ export type PowderLog = {
 export type CareEvent = {
   id: string
   event_date: string
-  kind: 'bm' | 'urine' | 'urine_symptom' | 'pad' | 'hygiene' | 'cleaning'
+  kind: 'bm' | 'urine' | 'urine_symptom' | 'pad' | 'hygiene' | 'cleaning' | 'pill_fill'
   detail: string
   created_at: string
   created_by: string

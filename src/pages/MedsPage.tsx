@@ -3,6 +3,7 @@ import { supabase, todayStr, fmtTime24, fmtClock, fmtDateFull, Medication, MedDo
 import { DIARRHEA_WARNING } from './TodayPage'
 import { useToast } from '../toast'
 import DayNav from '../DayNav'
+import PillFillCard from '../PillFill'
 
 const POWDER_AMOUNTS = ['½ tsp', '1 tsp', '2 tsp', '½ tbsp', '1 tbsp', '2 tbsp']
 const POWDER_ITEMS = ['Fiber', 'MiraLAX'] as const
@@ -174,6 +175,8 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
       {hasDiarrhea && (
         <div className="warn">⚠️ <b>Diarrhea/Vomiting flagged {isToday ? 'today' : 'this day'}.</b> {DIARRHEA_WARNING}</div>
       )}
+      {isToday && <PillFillCard />}
+
       <div className="muted" style={{ marginBottom: 4 }}>
         Tap <b>Give</b> to mark given · <b>Hold</b> to log a skipped dose · tap again to undo.
       </div>
