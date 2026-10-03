@@ -183,17 +183,18 @@ export function fmtDateFull(d: string) {
 
 // Timestamp for a log entered against an earlier day. Returns undefined for
 // today so the DB `now()` default (with real seconds) is used instead.
-export function stampFor(date: string, hhmm: string): string | undefined {
-  if (date === todayStr()) return undefined
+export function stampFor(date: string, hhmm: string, forceTime = false): string | undefined {
+  if (date === todayStr() && !forceTime) return undefined
   const [h, m] = (hhmm || '').split(':').map(Number)
   const d = new Date(date + 'T12:00:00')
   if (!isNaN(h) && !isNaN(m)) d.setHours(h, m, 0, 0)
   return d.toISOString()
 }
 
-// Spreads `created_at` into an insert payload only when backdating.
-export function stamp(date: string, hhmm: string): { created_at?: string } {
-  const at = stampFor(date, hhmm)
+// Spreads `created_at` into an insert payload when backdating, or when the
+// logger set the time by hand on today's date (a 12:43am trip logged at 7am).
+export function stamp(date: string, hhmm: string, forceTime = false): { created_at?: string } {
+  const at = stampFor(date, hhmm, forceTime)
   return at ? { created_at: at } : {}
 }
 
