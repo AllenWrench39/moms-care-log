@@ -16,7 +16,10 @@ export type PrnLog = {
   log_date: string; created_at: string; created_by: string
 }
 
-const REASONS = ['Cough', 'Heartburn', 'Nausea', 'Pain', "Can't sleep", 'Constipation', 'Fever', 'Anxious', 'Other']
+const REASONS = [
+  'Headache', 'Pain', 'Cough', 'Congestion', 'Heartburn', 'Nausea',
+  "Can't sleep", 'Constipation', 'Fever', 'Anxious', 'Allergies', 'Other',
+]
 
 function sinceText(iso: string) {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
