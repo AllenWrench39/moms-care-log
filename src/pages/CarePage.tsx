@@ -46,7 +46,10 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
   const today = todayStr()
   const toast = useToast()
   const [date, setDate] = useState(todayStr())
-  const [time, setTime] = useState(nowHHMM())
+  const [time, setTimeRaw] = useState(nowHHMM())
+  const [timeEdited, setTimeEdited] = useState(false)
+  const setTime = (t: string) => { setTimeRaw(t); setTimeEdited(true) }
+  const resetTime = () => { setTimeRaw(nowHHMM()); setTimeEdited(false) }
   const isToday = date === today
   const [events, setEvents] = useState<CareEvent[]>([])
   const [exercises, setExercises] = useState<PtExercise[]>([])
@@ -86,7 +89,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
   }, [date])
 
   async function addEvent(kind: CareEvent['kind'], detail: string, msg: string) {
-    await supabase.from('care_events').insert({ event_date: date, kind, detail, ...stamp(date, time) })
+    await supabase.from('care_events').insert({ event_date: date, kind, detail, ...stamp(date, time, timeEdited) })
     toast.show(msg)
     load()
   }
@@ -119,11 +122,11 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
     if (ex.unit === 'sets_reps') {
       const sets = parseInt(input.sets), reps = parseInt(input.reps)
       if (!sets || !reps) return
-      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: date, sets, reps, ...snapshot, ...stamp(date, time) })
+      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: date, sets, reps, ...snapshot, ...stamp(date, time, timeEdited) })
     } else {
       const val = parseInt(input.reps)
       if (!val) return
-      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: date, sets: 1, reps: val, ...snapshot, ...stamp(date, time) })
+      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: date, sets: 1, reps: val, ...snapshot, ...stamp(date, time, timeEdited) })
     }
     toast.show('PT logged ✓')
     load()
@@ -180,7 +183,8 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
 
   return (
     <>
-      <DayNav date={date} onChange={setDate} time={time} onTimeChange={setTime} />
+      <DayNav date={date} onChange={setDate} time={time} onTimeChange={setTime}
+        timeEdited={timeEdited} onResetTime={resetTime} />
       {!isToday && (
         <div className="warn">⏪ Logging for <b>{fmtDateFull(date)}</b> — not today. Everything on this tab is saved to that day.</div>
       )}

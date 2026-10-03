@@ -38,7 +38,10 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   const today = todayStr()
   const toast = useToast()
   const [date, setDate] = useState(todayStr())
-  const [time, setTime] = useState(nowHHMM())
+  const [time, setTimeRaw] = useState(nowHHMM())
+  const [timeEdited, setTimeEdited] = useState(false)
+  const setTime = (t: string) => { setTimeRaw(t); setTimeEdited(true) }
+  const resetTime = () => { setTimeRaw(nowHHMM()); setTimeEdited(false) }
   const isToday = date === today
 
   const [vitals, setVitals] = useState<VitalReading[]>([])
@@ -94,7 +97,7 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   async function saveVital(kind: string) {
     const value = (vitalInputs[kind] ?? '').trim()
     if (!value) return
-    await supabase.from('vital_readings').insert({ reading_date: date, kind, value, ...stamp(date, time) })
+    await supabase.from('vital_readings').insert({ reading_date: date, kind, value, ...stamp(date, time, timeEdited) })
     setVitalInputs({ ...vitalInputs, [kind]: '' })
     toast.show('Reading saved ✓')
     load()
@@ -121,7 +124,7 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   }
 
   function openSymptomModal() {
-    setSymptomTime(isToday ? nowHHMM() : time)
+    setSymptomTime(isToday && !timeEdited ? nowHHMM() : time)
     setSymptomModalOpen(true)
   }
 
@@ -138,7 +141,7 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
     if (!mealDesc.trim()) return
     await supabase.from('meals').insert({
       meal_date: date, meal_type: mealType, description: mealDesc.trim(), amount: mealAmt.trim() || null,
-      ...stamp(date, time),
+      ...stamp(date, time, timeEdited),
     })
     setMealDesc(''); setMealAmt('')
     toast.show('Meal logged ✓')
@@ -148,14 +151,14 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   async function addFluid(oz: string) {
     const n = parseFloat(oz)
     if (!n || n <= 0) return
-    await supabase.from('fluids').insert({ fluid_date: date, fluid_type: fluidType, oz: n, ...stamp(date, time) })
+    await supabase.from('fluids').insert({ fluid_date: date, fluid_type: fluidType, oz: n, ...stamp(date, time, timeEdited) })
     toast.show(`${n} oz ${fluidType} ✓`)
     load()
   }
 
   async function addNote() {
     if (!newNote.trim()) return
-    await supabase.from('log_entries').insert({ note: newNote.trim(), ...stamp(date, time) })
+    await supabase.from('log_entries').insert({ note: newNote.trim(), ...stamp(date, time, timeEdited) })
     setNewNote('')
     toast.show('Note saved ✓')
     load()
@@ -172,7 +175,8 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
 
   return (
     <>
-      <DayNav date={date} onChange={setDate} time={time} onTimeChange={setTime} />
+      <DayNav date={date} onChange={setDate} time={time} onTimeChange={setTime}
+        timeEdited={timeEdited} onResetTime={resetTime} />
       {!isToday && (
         <div className="warn">⏪ Logging for <b>{fmtDateFull(date)}</b> — not today. Everything on this tab is saved to that day.</div>
       )}
