@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase, todayStr, fmtTime24, fmtClock, fmtDateFull, Medication, MedDose, PowderLog } from '../supabase'
+import { supabase, todayStr, fmtTime24, fmtClock, fmtDateFull, stamp, nowHHMM, Medication, MedDose, PowderLog } from '../supabase'
 import { DIARRHEA_WARNING } from './TodayPage'
 import { useToast } from '../toast'
 import DayNav from '../DayNav'
@@ -25,6 +25,12 @@ function fmtScheduledDays(days: number[]): string {
 
 export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) {
   const [date, setDate] = useState(todayStr())
+  // Clock time the dose was actually given — separate from dose_time, which is
+  // the scheduled slot it belongs to.
+  const [givenAt, setGivenAtRaw] = useState(nowHHMM())
+  const [timeEdited, setTimeEdited] = useState(false)
+  const setGivenAt = (t: string) => { setGivenAtRaw(t); setTimeEdited(true) }
+  const resetTime = () => { setGivenAtRaw(nowHHMM()); setTimeEdited(false) }
   const isToday = date === todayStr()
   const toast = useToast()
   const [meds, setMeds] = useState<Medication[]>([])
@@ -52,7 +58,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
   }
 
   async function logPowder(item: 'Fiber' | 'MiraLAX', amount: string) {
-    await supabase.from('powder_logs').insert({ item, amount, log_date: date })
+    await supabase.from('powder_logs').insert({ item, amount, log_date: date, ...stamp(date, givenAt, timeEdited) })
     toast.show(`${item} ${amount} logged ✓`)
     setPowderPicker(null)
     load()
@@ -85,7 +91,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
       if (existing) await supabase.from('med_doses').delete().eq('id', existing.id)
       await supabase.from('med_doses').insert({
         medication_id: med.id, dose_date: date, dose_time: time, status: 'given',
-        med_name: med.name, med_dose: med.dose,
+        med_name: med.name, med_dose: med.dose, ...stamp(date, givenAt, timeEdited),
       })
       toast.show('Med marked ✓')
     }
@@ -101,7 +107,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
     await supabase.from('med_doses').insert(
       pending.map((med) => ({
         medication_id: med.id, dose_date: date, dose_time: time, status: 'given',
-        med_name: med.name, med_dose: med.dose,
+        med_name: med.name, med_dose: med.dose, ...stamp(date, givenAt, timeEdited),
       }))
     )
     toast.show(`${pending.length} meds marked ✓`)
@@ -123,6 +129,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
     if (existing) await supabase.from('med_doses').delete().eq('id', existing.id)
     await supabase.from('med_doses').insert({
       medication_id: med.id, dose_date: date, dose_time: time, status: 'held', hold_reason: reason,
+      ...stamp(date, givenAt, timeEdited),
       med_name: med.name, med_dose: med.dose,
     })
     toast.show('Med held: ' + reason)
@@ -169,7 +176,8 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
 
   return (
     <>
-      <DayNav date={date} onChange={setDate} />
+      <DayNav date={date} onChange={setDate} time={givenAt} onTimeChange={setGivenAt}
+        timeEdited={timeEdited} onResetTime={resetTime} />
       {!isToday && (
         <div className="warn">⏪ Logging for <b>{fmtDateFull(date)}</b> — not today. Use this to fill in missed doses.</div>
       )}
@@ -253,7 +261,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
         )
       })}
 
-      {isToday && <PrnMeds nameOf={nameOf} />}
+      {isToday && <PrnMeds nameOf={nameOf} time={givenAt} timeEdited={timeEdited} />}
 
       <div style={{ marginTop: 18 }}>
         <button className="ghost" onClick={() => setManage(!manage)}>

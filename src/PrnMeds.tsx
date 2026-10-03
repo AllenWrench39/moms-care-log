@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase, todayStr, fmtClock, fmtDateFull } from './supabase'
+import { supabase, todayStr, fmtClock, fmtDateFull, stamp } from './supabase'
 import { useToast } from './toast'
 
 // As-needed medicines and short courses live apart from the daily schedule:
@@ -43,7 +43,11 @@ function dueText(ms: number) {
 
 const BLANK_COURSE = { name: '', dose: '', interval_hours: '24', total_doses: '3' }
 
-export default function PrnMeds({ nameOf }: { nameOf: (e: string) => string }) {
+export default function PrnMeds({ nameOf, time, timeEdited }: {
+  nameOf: (e: string) => string
+  time: string
+  timeEdited: boolean
+}) {
   const toast = useToast()
   const [meds, setMeds] = useState<PrnMed[]>([])
   const [courses, setCourses] = useState<MedCourse[]>([])
@@ -80,7 +84,7 @@ export default function PrnMeds({ nameOf }: { nameOf: (e: string) => string }) {
     if (!giving || !giving.dose) return
     await supabase.from('prn_logs').insert({
       prn_med_id: giving.med.id, name: giving.med.name, dose: giving.dose,
-      reason: giving.reason, log_date: todayStr(),
+      reason: giving.reason, log_date: todayStr(), ...stamp(todayStr(), time, timeEdited),
     })
     toast.show(`${giving.med.name} ${giving.dose} given ✓`)
     setGiving(null)
@@ -91,6 +95,7 @@ export default function PrnMeds({ nameOf }: { nameOf: (e: string) => string }) {
     const given = courseDoses(c.id)
     await supabase.from('prn_logs').insert({
       course_id: c.id, name: c.name, dose: c.dose, log_date: todayStr(),
+      ...stamp(todayStr(), time, timeEdited),
     })
     if (given + 1 >= c.total_doses) {
       await supabase.from('med_courses').update({ completed: true }).eq('id', c.id)
