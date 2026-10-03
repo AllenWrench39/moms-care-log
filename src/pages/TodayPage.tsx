@@ -31,6 +31,33 @@ export const DIARRHEA_WARNING =
   'HOLD: Furosemide, Spironolactone, Losartan, Mirabegron. Do NOT hold: Keppra, Carvedilol, Acyclovir, Levothyroxine.'
 
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Supplement']
+
+// One scale for everyone. The words were being written four different ways
+// ("full plate", "100", a 100 emoji, blank), so how much she actually ate
+// could not be compared across people. Each word carries its percentage.
+const AMOUNTS: { label: string; pct: number }[] = [
+  { label: 'None', pct: 0 },
+  { label: 'A few bites', pct: 10 },
+  { label: 'Quarter', pct: 25 },
+  { label: 'Half', pct: 50 },
+  { label: 'Most', pct: 75 },
+  { label: 'All', pct: 100 },
+]
+
+export function amountText(a: { label: string; pct: number }) { return `${a.label} (${a.pct}%)` }
+export function amountPct(amount: string | null): number | null {
+  const m = (amount ?? '').match(/(\d+)\s*%/)
+  return m ? Number(m[1]) : null
+}
+
+// What meal it probably is, from the clock. Pre-selects the chip; the logger
+// still has to confirm it, which is what stops dinners landing on breakfast.
+function mealTypeForHour(h: number) {
+  if (h < 10.5) return 'Breakfast'
+  if (h < 15) return 'Lunch'
+  if (h < 20) return 'Dinner'
+  return 'Snack'
+}
 const FLUID_TYPES = ['Water', 'Coffee', 'Tea', 'Juice', 'Lemon Water', 'Electrolytes', 'Soda', 'Milk', 'Broth', 'D-Mannose', 'Other']
 const FLUID_GOAL_OZ = 64
 
@@ -54,9 +81,8 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   const [editingVital, setEditingVital] = useState<VitalReading | null>(null)
   const [editValue, setEditValue] = useState('')
   const [editTime, setEditTime] = useState('')
-  const [mealType, setMealType] = useState('Breakfast')
   const [mealDesc, setMealDesc] = useState('')
-  const [mealAmt, setMealAmt] = useState('')
+  const [mealModal, setMealModal] = useState<{ type: string; amount: typeof AMOUNTS[number] | null } | null>(null)
   const [fluidType, setFluidType] = useState('Water')
   const [fluidOz, setFluidOz] = useState('8')
   const [newNote, setNewNote] = useState('')
@@ -137,14 +163,24 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
     load()
   }
 
-  async function addMeal() {
+  // Opens the confirm step rather than saving straight away.
+  function openMealModal() {
     if (!mealDesc.trim()) return
+    const h = timeEdited || !isToday
+      ? Number(time.split(':')[0]) + Number(time.split(':')[1]) / 60
+      : new Date().getHours() + new Date().getMinutes() / 60
+    setMealModal({ type: mealTypeForHour(h), amount: null })
+  }
+
+  async function saveMeal() {
+    if (!mealModal || !mealModal.amount) return
     await supabase.from('meals').insert({
-      meal_date: date, meal_type: mealType, description: mealDesc.trim(), amount: mealAmt.trim() || null,
+      meal_date: date, meal_type: mealModal.type, description: mealDesc.trim(),
+      amount: amountText(mealModal.amount),
       ...stamp(date, time, timeEdited),
     })
-    setMealDesc(''); setMealAmt('')
-    toast.show('Meal logged ✓')
+    setMealDesc(''); setMealModal(null)
+    toast.show(`${mealModal.type} logged ✓`)
     load()
   }
 
@@ -170,6 +206,8 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
     load()
   }
 
+  const mealPcts = meals.map((m) => amountPct(m.amount)).filter((n): n is number => n !== null)
+  const eatenAvg = mealPcts.length ? Math.round(mealPcts.reduce((a, b) => a + b, 0) / mealPcts.length) : null
   const totalOz = fluids.reduce((s, f) => s + Number(f.oz || 0), 0)
   const hasDiarrhea = symptoms.some((s) => ['Diarrhea', 'Vomiting'].includes(s.symptom))
 
@@ -263,17 +301,13 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
       </div>
 
       <div className="sec sec-orange">
-        <div className="sec-title">🍽 Meals</div>
-        <div className="chips" style={{ marginBottom: 9 }}>
-          {MEAL_TYPES.map((t) => (
-            <button key={t} className={`chip ${mealType === t ? 'on' : ''}`} onClick={() => setMealType(t)}>{t}</button>
-          ))}
+        <div className="sec-title">
+          🍽 Meals{eatenAvg !== null ? ` — ate ${eatenAvg}% on average` : ''}
         </div>
-        <input value={mealDesc} onChange={(e) => setMealDesc(e.target.value)} placeholder="What was eaten?" />
-        <div className="row">
-          <input className="grow" value={mealAmt} onChange={(e) => setMealAmt(e.target.value)} placeholder="Amount (full plate, half…)" />
-          <button onClick={addMeal}>Add</button>
-        </div>
+        <input value={mealDesc} onChange={(e) => setMealDesc(e.target.value)}
+          placeholder="What was eaten? e.g. 1 egg, 2 sausage, half a bagel"
+          onKeyDown={(e) => { if (e.key === 'Enter') openMealModal() }} />
+        <button onClick={openMealModal} disabled={!mealDesc.trim()}>Next — pick meal &amp; amount</button>
         {meals.map((m) => (
           <div className="feed-item" key={m.id}>
             <div>
@@ -330,6 +364,34 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
           </div>
         ))}
       </div>
+
+      {mealModal && (
+        <div className="modal-back" onClick={() => setMealModal(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 'bold', fontSize: 15, marginBottom: 2 }}>{mealDesc.trim()}</div>
+            <div className="muted" style={{ marginBottom: 12 }}>Which meal was this?</div>
+            <div className="chips" style={{ marginBottom: 16 }}>
+              {MEAL_TYPES.map((t) => (
+                <button key={t} className={`chip ${mealModal.type === t ? 'on' : ''}`}
+                  onClick={() => setMealModal({ ...mealModal, type: t })}>{t}</button>
+              ))}
+            </div>
+            <div className="muted" style={{ marginBottom: 8 }}>How much did she eat?</div>
+            <div className="chips" style={{ marginBottom: 16 }}>
+              {AMOUNTS.map((a) => (
+                <button key={a.label} className={`chip ${mealModal.amount?.label === a.label ? 'on' : ''}`}
+                  onClick={() => setMealModal({ ...mealModal, amount: a })}>{a.label} <span className="faint">{a.pct}%</span></button>
+              ))}
+            </div>
+            <div className="row">
+              <button className="grow" onClick={saveMeal} disabled={!mealModal.amount}>
+                {mealModal.amount ? `Save ${mealModal.type}` : 'Pick an amount'}
+              </button>
+              <button className="secondary" onClick={() => setMealModal(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {symptomModalOpen && (
         <div className="modal-back" onClick={() => setSymptomModalOpen(false)}>
