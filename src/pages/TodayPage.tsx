@@ -7,6 +7,7 @@ import { useToast } from '../toast'
 import DayNav, { shiftDay } from '../DayNav'
 import UtiWatch from '../UtiWatch'
 import { PillFillBanner } from '../PillFill'
+import VitalsEntry from '../VitalsEntry'
 
 const VITALS: { kind: string; label: string; ph: string }[] = [
   { kind: 'bp', label: 'Blood Pressure', ph: '120/80' },
@@ -77,7 +78,6 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   const [fluids, setFluids] = useState<Fluid[]>([])
   const [notes, setNotes] = useState<LogEntry[]>([])
 
-  const [vitalInputs, setVitalInputs] = useState<Record<string, string>>({})
   const [editingVital, setEditingVital] = useState<VitalReading | null>(null)
   const [editValue, setEditValue] = useState('')
   const [editTime, setEditTime] = useState('')
@@ -117,17 +117,6 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
     return () => { supabase.removeChannel(ch) }
   }, [date])
 
-  // latest reading per vital kind today
-  const latest = (kind: string) => [...vitals].reverse().find((v) => v.kind === kind)
-
-  async function saveVital(kind: string) {
-    const value = (vitalInputs[kind] ?? '').trim()
-    if (!value) return
-    await supabase.from('vital_readings').insert({ reading_date: date, kind, value, ...stamp(date, time, timeEdited) })
-    setVitalInputs({ ...vitalInputs, [kind]: '' })
-    toast.show('Reading saved ✓')
-    load()
-  }
 
   function startEditVital(v: VitalReading) {
     setEditingVital(v)
@@ -224,29 +213,10 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
 
       <div className="sec sec-green">
         <div className="sec-title">📊 Vitals</div>
-        <div className="vgrid">
-          {VITALS.map((v) => {
-            const last = latest(v.kind)
-            return (
-              <div key={v.kind}>
-                <label>{v.label}</label>
-                <div className="row">
-                  <input
-                    className="grow"
-                    value={vitalInputs[v.kind] ?? ''}
-                    placeholder={last ? last.value : v.ph}
-                    onChange={(e) => setVitalInputs({ ...vitalInputs, [v.kind]: e.target.value })}
-                    onBlur={() => saveVital(v.kind)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                  />
-                </div>
-                {last && <div className="faint">{last.value} · {fmtClock(last.created_at)} · {nameOf(last.created_by)}</div>}
-              </div>
-            )
-          })}
-        </div>
+        <VitalsEntry date={date} time={time} timeEdited={timeEdited}
+          onSaved={load} toast={toast.show} />
         <div className="faint" style={{ marginTop: 7 }}>
-          Type a value and tap away to save. Multiple readings per day are kept.
+          Fill in only what you measured. Multiple readings per day are kept.
         </div>
         {vitals.length > 0 && (
           <div style={{ marginTop: 10 }}>
