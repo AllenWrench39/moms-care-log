@@ -4,6 +4,7 @@ import { DIARRHEA_WARNING } from './TodayPage'
 import { useToast } from '../toast'
 import DayNav from '../DayNav'
 import PillFillCard from '../PillFill'
+import PrnMeds from '../PrnMeds'
 
 const POWDER_AMOUNTS = ['½ tsp', '1 tsp', '2 tsp', '½ tbsp', '1 tbsp', '2 tbsp']
 const POWDER_ITEMS = ['Fiber', 'MiraLAX'] as const
@@ -251,6 +252,8 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
         </div>
         )
       })}
+
+      {isToday && <PrnMeds nameOf={nameOf} />}
 
       <div style={{ marginTop: 18 }}>
         <button className="ghost" onClick={() => setManage(!manage)}>

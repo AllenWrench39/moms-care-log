@@ -46,6 +46,15 @@ export default function ExportPage() {
         ])
       })
     }
+    if (want('meds')) {
+      const { data } = await supabase.from('prn_logs').select('*').order('log_date')
+      ;(data ?? []).forEach((p) => rows.push([
+        p.log_date, clock(p.created_at), p.created_by,
+        p.course_id ? 'Medication COURSE' : 'Medication AS NEEDED',
+        `${p.name}${p.dose ? ' ' + p.dose : ''}`,
+        p.reason ?? '',
+      ]))
+    }
     if (want('fluids')) {
       const { data } = await supabase.from('fluids').select('*').order('fluid_date')
       ;(data ?? []).forEach((f) => rows.push([f.fluid_date, clock(f.created_at), f.created_by, 'Fluids', f.fluid_type, `${f.oz} oz`]))
