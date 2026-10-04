@@ -9,10 +9,11 @@ import ChartsPage from './pages/ChartsPage'
 import HistoryPage from './pages/HistoryPage'
 import NotesPage from './pages/NotesPage'
 import CalendarPage from './pages/CalendarPage'
+import PickupsPage from './pages/PickupsPage'
 import TasksPage from './pages/TasksPage'
 import ExportPage from './pages/ExportPage'
 
-type Tab = 'today' | 'meds' | 'care' | 'charts' | 'history' | 'notes' | 'appts' | 'tasks' | 'export'
+type Tab = 'today' | 'meds' | 'care' | 'charts' | 'history' | 'notes' | 'appts' | 'pickups' | 'tasks' | 'export'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'today', label: '📋 Today' },
@@ -22,6 +23,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'history', label: '📅 History' },
   { id: 'notes', label: '📌 Notes' },
   { id: 'appts', label: '🗓 Appts' },
+  { id: 'pickups', label: '🚗 Pickups' },
   { id: 'tasks', label: '✅ Tasks' },
   { id: 'export', label: '📤 Export' },
 ]
@@ -128,6 +130,7 @@ export default function App() {
         {activeTab === 'history' && <HistoryPage nameOf={nameOf} />}
         {activeTab === 'notes' && <NotesPage nameOf={nameOf} readOnly={doctorMode} />}
         {activeTab === 'appts' && <CalendarPage family={family} nameOf={nameOf} />}
+        {activeTab === 'pickups' && <PickupsPage family={family} myEmail={myEmail} nameOf={nameOf} />}
         {activeTab === 'tasks' && <TasksPage family={family} nameOf={nameOf} />}
         {activeTab === 'export' && <ExportPage />}
       </main>
