@@ -7,6 +7,7 @@ import { useToast } from '../toast'
 export type Pickup = {
   id: string
   pickup_date: string
+  return_date: string | null
   claimed_by: string | null
   claimed_name: string | null
   from_time: string | null
@@ -30,30 +31,75 @@ export function countdown(days: number) {
   return `in ${days} days`
 }
 
+// The end of the stay: the return date when it is an overnight, else the
+// pickup date itself. Used for "is she still away" and for sorting past days.
+export function endDate(p: Pickup) {
+  return p.return_date && p.return_date > p.pickup_date ? p.return_date : p.pickup_date
+}
+
+export function nights(p: Pickup) {
+  if (!p.return_date || p.return_date <= p.pickup_date) return 0
+  const a = new Date(p.pickup_date + 'T12:00:00').getTime()
+  const b = new Date(p.return_date + 'T12:00:00').getTime()
+  return Math.round((b - a) / 86400000)
+}
+
+function stayLabel(p: Pickup) {
+  const n = nights(p)
+  if (n === 0) return fmtDateFull(p.pickup_date)
+  return `${fmtDateFull(p.pickup_date)} → ${fmtDateFull(p.return_date!)}`
+}
+
+function nightsLabel(p: Pickup) {
+  const n = nights(p)
+  if (n === 0) return 'same day'
+  return `${n + 1} days · ${n} ${n === 1 ? 'night' : 'nights'}`
+}
+
 function timeRange(p: Pickup) {
-  if (!p.from_time && !p.to_time) return 'time not set yet'
-  if (p.from_time && p.to_time) return `${fmtTime24(p.from_time)} – ${fmtTime24(p.to_time)}`
-  return fmtTime24((p.from_time ?? p.to_time)!)
+  const n = nights(p)
+  if (!p.from_time && !p.to_time) return 'times not set yet'
+  const out = p.from_time ? `leaves ${fmtTime24(p.from_time)}` : ''
+  const back = p.to_time ? `back ${n > 0 ? 'on return day ' : ''}${fmtTime24(p.to_time)}` : ''
+  return [out, back].filter(Boolean).join(' · ')
 }
 
 // Banner for the Today tab, quiet until a pickup is close.
 export function PickupBanner() {
-  const [soon, setSoon] = useState<Pickup[]>([])
+  const [rows, setRows] = useState<Pickup[]>([])
   useEffect(() => {
+    // A stay that started earlier can still be running, so look back a little.
+    const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
     supabase.from('pickups').select('*').eq('cancelled', false)
-      .gte('pickup_date', todayStr()).order('pickup_date').limit(5)
-      .then(({ data }) => setSoon((data ?? []).filter((p) => daysUntil(p.pickup_date) <= NOTICE_DAYS)))
+      .gte('pickup_date', from).order('pickup_date')
+      .then(({ data }) => setRows(data ?? []))
   }, [])
-  if (soon.length === 0) return null
+
+  const today = todayStr()
+  const away = rows.filter((p) => p.pickup_date <= today && endDate(p) >= today && p.claimed_by)
+  const soon = rows.filter((p) => p.pickup_date > today && daysUntil(p.pickup_date) <= NOTICE_DAYS)
+  if (away.length === 0 && soon.length === 0) return null
+
   return (
     <>
+      {away.map((p) => (
+        <div className="warn" key={p.id} style={{ borderLeft: '4px solid var(--green)' }}>
+          🚗 <b>Mom is out with {p.claimed_name}</b>
+          <div style={{ marginTop: 3 }}>
+            {nights(p) > 0
+              ? <>Back {fmtDateFull(endDate(p))}{p.to_time ? ` around ${fmtTime24(p.to_time)}` : ''}</>
+              : <>Back today{p.to_time ? ` around ${fmtTime24(p.to_time)}` : ''}</>}
+            {p.note ? ` · ${p.note}` : ''}
+          </div>
+        </div>
+      ))}
       {soon.map((p) => (
         <div className="warn" key={p.id} style={{ borderLeft: '4px solid var(--green)' }}>
-          🚗 <b>Pickup {countdown(daysUntil(p.pickup_date))} — {fmtDateFull(p.pickup_date)}</b>
+          🚗 <b>Pickup {countdown(daysUntil(p.pickup_date))} — {stayLabel(p)}</b>
           <div style={{ marginTop: 3 }}>
             {p.claimed_name
-              ? <>{p.claimed_name} · {timeRange(p)}{p.note ? ` · ${p.note}` : ''}</>
-              : <b>Nobody has claimed this day yet.</b>}
+              ? <>{p.claimed_name} · {nightsLabel(p)} · {timeRange(p)}{p.note ? ` · ${p.note}` : ''}</>
+              : <b>Nobody has claimed this yet.</b>}
           </div>
         </div>
       ))}
@@ -70,9 +116,10 @@ export default function PickupsPage({ family, myEmail, nameOf }: {
   const [rows, setRows] = useState<Pickup[]>([])
   const [showPast, setShowPast] = useState(false)
   const [newDate, setNewDate] = useState('')
+  const [newReturn, setNewReturn] = useState('')
   const [newNote, setNewNote] = useState('')
   const [claiming, setClaiming] = useState<Pickup | null>(null)
-  const [form, setForm] = useState({ name: '', from: '10:00', to: '14:00', note: '' })
+  const [form, setForm] = useState({ name: '', from: '10:00', to: '14:00', note: '', ret: '' })
 
   async function load() {
     const { data } = await supabase.from('pickups').select('*').order('pickup_date')
@@ -82,8 +129,12 @@ export default function PickupsPage({ family, myEmail, nameOf }: {
 
   async function addDay() {
     if (!newDate) return
-    await supabase.from('pickups').insert({ pickup_date: newDate, note: newNote.trim() || null })
-    setNewDate(''); setNewNote('')
+    await supabase.from('pickups').insert({
+      pickup_date: newDate,
+      return_date: newReturn && newReturn > newDate ? newReturn : null,
+      note: newNote.trim() || null,
+    })
+    setNewDate(''); setNewReturn(''); setNewNote('')
     toast.show('Day added ✓')
     load()
   }
@@ -95,6 +146,7 @@ export default function PickupsPage({ family, myEmail, nameOf }: {
       from: p.from_time ?? '10:00',
       to: p.to_time ?? '14:00',
       note: p.note ?? '',
+      ret: p.return_date ?? '',
     })
   }
 
@@ -103,6 +155,7 @@ export default function PickupsPage({ family, myEmail, nameOf }: {
     await supabase.from('pickups').update({
       claimed_by: myEmail, claimed_name: form.name.trim(),
       from_time: form.from, to_time: form.to, note: form.note.trim() || null,
+      return_date: form.ret && form.ret > claiming.pickup_date ? form.ret : null,
     }).eq('id', claiming.id)
     setClaiming(null)
     toast.show('Pickup claimed ✓')
@@ -130,8 +183,8 @@ export default function PickupsPage({ family, myEmail, nameOf }: {
   }
 
   const today = todayStr()
-  const upcoming = rows.filter((p) => p.pickup_date >= today && !p.cancelled)
-  const past = rows.filter((p) => p.pickup_date < today || p.cancelled)
+  const upcoming = rows.filter((p) => endDate(p) >= today && !p.cancelled)
+  const past = rows.filter((p) => (endDate(p) < today || p.cancelled))
   const unclaimed = upcoming.filter((p) => !p.claimed_by).length
 
   const Card = ({ p, isPast }: { p: Pickup; isPast?: boolean }) => {
@@ -144,8 +197,9 @@ export default function PickupsPage({ family, myEmail, nameOf }: {
       }}>
         <div className="row between" style={{ alignItems: 'flex-start' }}>
           <div style={{ minWidth: 0 }}>
-            <b style={{ fontSize: 15 }}>{fmtDateFull(p.pickup_date)}</b>
-            {!isPast && <span className="faint"> · {countdown(days)}</span>}
+            <b style={{ fontSize: 15 }}>{stayLabel(p)}</b>
+            {!isPast && <span className="faint"> · {days < 0 ? 'out now' : countdown(days)}</span>}
+            <div className="faint">{nightsLabel(p)}</div>
             {p.cancelled && <span className="badge" style={{ marginLeft: 6 }}>Cancelled</span>}
             <div style={{ marginTop: 4 }}>
               {p.claimed_by ? (
@@ -192,13 +246,20 @@ export default function PickupsPage({ family, myEmail, nameOf }: {
           </div>
         )}
         <div className="muted" style={{ marginBottom: 9 }}>
-          Add the days Mom can be picked up. Whoever is taking her taps <b>I'll take it</b> and
-          sets their time range. Everyone sees it, and it shows on the Today tab {NOTICE_DAYS} days ahead.
+          Add the days Mom can be picked up — a single day, or a stay with a return date.
+          Whoever is taking her taps <b>I'll take it</b> and sets the times. Everyone sees it, and it shows on the Today tab {NOTICE_DAYS} days ahead.
         </div>
-        <div className="row">
-          <input type="date" value={newDate} min={today} onChange={(e) => setNewDate(e.target.value)} style={{ marginBottom: 0 }} />
-          <button onClick={addDay} disabled={!newDate}>Add day</button>
+        <div className="row" style={{ gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <label>Pick up</label>
+            <input type="date" value={newDate} min={today} onChange={(e) => setNewDate(e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <label>Return <span className="faint">(same day if blank)</span></label>
+            <input type="date" value={newReturn} min={newDate || today} onChange={(e) => setNewReturn(e.target.value)} />
+          </div>
         </div>
+        <button onClick={addDay} disabled={!newDate}>Add</button>
         <input value={newNote} onChange={(e) => setNewNote(e.target.value)}
           placeholder="Note for the day (optional) — e.g. lunch out, bring walker" style={{ marginTop: 8 }} />
       </div>
@@ -236,13 +297,20 @@ export default function PickupsPage({ family, myEmail, nameOf }: {
             </div>
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Or type a name" />
 
+            <label>Returning</label>
+            <input type="date" value={form.ret} min={claiming.pickup_date}
+              onChange={(e) => setForm({ ...form, ret: e.target.value })} />
+            <div className="faint" style={{ marginTop: -6, marginBottom: 8 }}>
+              Leave blank for a same-day outing.
+            </div>
+
             <div className="row" style={{ gap: 8, marginTop: 4 }}>
               <div style={{ flex: 1 }}>
-                <label>Pick up</label>
+                <label>Leaves at</label>
                 <input type="time" value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} />
               </div>
               <div style={{ flex: 1 }}>
-                <label>Back by</label>
+                <label>Back at</label>
                 <input type="time" value={form.to} onChange={(e) => setForm({ ...form, to: e.target.value })} />
               </div>
             </div>
