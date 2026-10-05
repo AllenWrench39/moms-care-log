@@ -7,9 +7,13 @@ import UtiWatch, { URINE_FLAGS } from '../UtiWatch'
 const BM_SIZES = ['Small', 'Medium', 'Large']
 const BM_TYPES = ['Normal', 'Soft', 'Loose', 'Diarrhea', 'Hard', 'Watery']
 const URINE_COLORS = ['Clear', 'Pale Yellow', 'Dark Yellow', 'Amber', 'Orange', 'Pink/Red', 'Brown']
+// Accidents are split awake vs asleep because nearly all of hers happen while
+// she is asleep — she makes it to the bathroom during the day — and the two
+// mean different things to a doctor.
 const URINE_SYMPTOMS = [
+  'Accident while sleeping', 'Accident while awake',
   'Burning', 'Urgency', 'Frequency', 'Straining', 'Only a little came out',
-  'Incontinence/accident', 'Pain', 'Holding it / could not go',
+  'Holding it / could not go', 'Pain when going', 'Back pain',
   'Leaning left/right too heavily',
 ]
 const PAD_TYPES = ['Bed/Chair Pad', 'Pamper Pad']
