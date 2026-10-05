@@ -22,6 +22,9 @@ const DAMPNESS = ['Dry', 'Damp', 'Wet', 'Soaked']
 const PAMPER_EXTRA = ['Poop', 'Wet + Poop']
 const HYGIENE_ITEMS = ['Bed Bath', 'Shower', 'Hair Wash', 'Nail Care', 'Oral Care', 'Skin Care', 'Pad Change', 'Repositioned']
 const CLEANING_ITEMS = ['Bed Linens', 'Room Clean', 'Bathroom', 'Laundry', 'Trash', 'Floor Mop', 'Dishes', 'Supply Restock']
+// "Bathroom" covered anything from a sink wipe to a full clean, so the log could
+// not say whether the floor had been mopped. Tapping it now asks what was done.
+const BATHROOM_PARTS = ['Toilet', 'Sink', 'Shower', 'Floor mopped', 'Shelves', 'Mirror', 'Trash', 'Other']
 
 const UNIT_OPTIONS: { value: PtExercise['unit']; label: string }[] = [
   { value: 'sets_reps', label: 'Sets × Reps' },
@@ -61,6 +64,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
   const [bmWeek, setBmWeek] = useState(0)
   const [urineFlags, setUrineFlags] = useState<string[]>([])
   const [padTarget, setPadTarget] = useState<string | null>(null)
+  const [bathParts, setBathParts] = useState<string[] | null>(null)
   const [bmSize, setBmSize] = useState('Medium')
   const [bmType, setBmType] = useState('Normal')
   const [ptInput, setPtInput] = useState<Record<string, { sets: string; reps: string }>>({})
@@ -106,6 +110,12 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
 
   function toggleFlag(f: string) {
     setUrineFlags(urineFlags.includes(f) ? urineFlags.filter((x) => x !== f) : [...urineFlags, f])
+  }
+
+  async function logBathroom() {
+    if (!bathParts || bathParts.length === 0) return
+    await addEvent('cleaning', `Bathroom · ${bathParts.join(', ')}`, 'Bathroom logged ✓')
+    setBathParts(null)
   }
 
   async function logPad(damp: string) {
@@ -270,8 +280,11 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
         <div className="sec-title">🧹 Cleaning</div>
         <div className="chips">
           {CLEANING_ITEMS.map((c) => (
-            <button key={c} className={`chip ${byKind('cleaning').some((e) => e.detail === c) ? 'on' : ''}`}
-              onClick={() => addEvent('cleaning', c, c + ' ✓')}>{c}</button>
+            <button key={c}
+              className={`chip ${byKind('cleaning').some((e) => e.detail === c || e.detail.startsWith(c + ' ·')) ? 'on' : ''}`}
+              onClick={() => c === 'Bathroom' ? setBathParts([]) : addEvent('cleaning', c, c + ' ✓')}>
+              {c}{c === 'Bathroom' ? ' …' : ''}
+            </button>
           ))}
         </div>
         <EventList kind="cleaning" />
@@ -382,6 +395,29 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
           </div>
         )}
       </div>
+
+      {bathParts && (
+        <div className="modal-back" onClick={() => setBathParts(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 'bold', fontSize: 15, marginBottom: 2 }}>Bathroom</div>
+            <div className="muted" style={{ marginBottom: 12 }}>What got cleaned? Tap all that apply.</div>
+            <div className="chips" style={{ marginBottom: 16 }}>
+              {BATHROOM_PARTS.map((b) => (
+                <button key={b} className={`chip ${bathParts.includes(b) ? 'on' : ''}`}
+                  onClick={() => setBathParts(bathParts.includes(b)
+                    ? bathParts.filter((x) => x !== b)
+                    : [...bathParts, b])}>{b}</button>
+              ))}
+            </div>
+            <div className="row">
+              <button className="grow" onClick={logBathroom} disabled={bathParts.length === 0}>
+                {bathParts.length === 0 ? 'Pick what was cleaned' : `Save ${bathParts.length}`}
+              </button>
+              <button className="secondary" onClick={() => setBathParts(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {padTarget && (
         <div className="modal-back" onClick={() => setPadTarget(null)}>
