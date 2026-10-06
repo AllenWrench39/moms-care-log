@@ -330,11 +330,11 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
                     <div className="progress" style={{ marginBottom: 3 }}>
                       <div style={{ width: `${pct}%`, background: left <= 0 ? 'var(--green)' : undefined }} />
                     </div>
-                    <div className="faint">
+                    <div style={{ color: 'var(--ink)', fontSize: '0.88rem' }}>
                       This week <b>{soFar}</b> of {ex.weekly_goal} {unitShort(ex)} ·{' '}
                       {left > 0
-                        ? <span>{left} {unitShort(ex)} to go</span>
-                        : <span style={{ color: 'var(--green)' }}>✓ goal met{left < 0 ? ` — ${-left} over` : ''}</span>}
+                        ? <b>{left} {unitShort(ex)} to go</b>
+                        : <b style={{ color: 'var(--green)' }}>✓ goal met{left < 0 ? ` — ${-left} over` : ''}</b>}
                     </div>
                   </div>
                 )
