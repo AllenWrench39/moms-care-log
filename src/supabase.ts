@@ -105,7 +105,19 @@ export type PtExercise = {
   unit: 'sets_reps' | 'minutes' | 'feet' | 'custom'
   target_sets: number
   target_reps: number
+  weekly_goal: number   // 0 = no goal; measured in the exercise's own unit
   active: boolean
+}
+
+// Monday-start week containing a date, as YYYY-MM-DD bounds.
+export function weekBounds(date: string): { start: string; end: string } {
+  const d = new Date(date + 'T12:00:00')
+  const dow = (d.getDay() + 6) % 7          // Mon = 0
+  const mon = new Date(d); mon.setDate(d.getDate() - dow)
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6)
+  const fmt = (x: Date) =>
+    `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`
+  return { start: fmt(mon), end: fmt(sun) }
 }
 
 export type PtLog = {
