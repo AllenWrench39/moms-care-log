@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase, todayStr, fmtClock, fmtDateFull, stamp, nowHHMM, CareEvent, PtExercise, PtLog } from '../supabase'
+import { supabase, todayStr, fmtClock, fmtDateFull, stamp, nowHHMM, weekBounds, CareEvent, PtExercise, PtLog } from '../supabase'
 import { useToast } from '../toast'
 import DayNav, { shiftDay } from '../DayNav'
 import UtiWatch, { URINE_FLAGS } from '../UtiWatch'
@@ -47,7 +47,14 @@ function logDisplay(ex: PtExercise, p: PtLog): string {
   return `✓ ${p.reps}`
 }
 
-const BLANK_FORM = { name: '', unit: 'sets_reps' as PtExercise['unit'], target_sets: '1', target_reps: '10' }
+const BLANK_FORM = {
+  name: '', unit: 'sets_reps' as PtExercise['unit'],
+  target_sets: '1', target_reps: '10', weekly_goal: '20',
+}
+
+function unitShort(ex: PtExercise) {
+  return ex.unit === 'minutes' ? 'min' : ex.unit === 'feet' ? 'ft' : 'reps'
+}
 
 export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) {
   const today = todayStr()
@@ -61,6 +68,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
   const [events, setEvents] = useState<CareEvent[]>([])
   const [exercises, setExercises] = useState<PtExercise[]>([])
   const [ptLogs, setPtLogs] = useState<PtLog[]>([])
+  const [weekLogs, setWeekLogs] = useState<PtLog[]>([])
   const [bmWeek, setBmWeek] = useState(0)
   const [urineFlags, setUrineFlags] = useState<string[]>([])
   const [padTarget, setPadTarget] = useState<string | null>(null)
@@ -73,10 +81,13 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
   const [editingEx, setEditingEx] = useState<PtExercise | null>(null)
 
   async function load() {
-    const [e, x, p, bm] = await Promise.all([
+    const [e, x, p, wk, bm] = await Promise.all([
       supabase.from('care_events').select('*').eq('event_date', date).order('created_at'),
       supabase.from('pt_exercises').select('*').eq('active', true).order('name'),
       supabase.from('pt_logs').select('*').eq('log_date', date),
+      // Whole week around the day being viewed, for the goal countdowns.
+      supabase.from('pt_logs').select('*')
+        .gte('log_date', weekBounds(date).start).lte('log_date', weekBounds(date).end),
       // Rolling 7 days ending on the day being viewed, this day included.
       supabase.from('care_events').select('id', { count: 'exact', head: true })
         .eq('kind', 'bm').gte('event_date', shiftDay(date, -6)).lte('event_date', date),
@@ -84,6 +95,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
     setEvents(e.data ?? [])
     setExercises(x.data ?? [])
     setPtLogs(p.data ?? [])
+    setWeekLogs(wk.data ?? [])
     setBmWeek(bm.count ?? 0)
   }
 
@@ -153,6 +165,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
       unit: exForm.unit,
       target_sets: parseInt(exForm.target_sets) || 1,
       target_reps: parseInt(exForm.target_reps) || 10,
+      weekly_goal: parseInt(exForm.weekly_goal) || 0,
       active: true,
     }
     if (editingEx) {
@@ -173,6 +186,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
       unit: ex.unit,
       target_sets: String(ex.target_sets ?? 1),
       target_reps: String(ex.target_reps ?? 10),
+      weekly_goal: String(ex.weekly_goal ?? 0),
     })
   }
 
@@ -300,12 +314,31 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
               <div>
                 <b style={{ fontSize: 14 }}>{ex.name}</b>
                 <span className="faint" style={{ marginLeft: 8 }}>
-                  {ex.unit === 'sets_reps' && `Target: ${ex.target_sets} × ${ex.target_reps}`}
-                  {ex.unit === 'minutes' && `Target: ${ex.target_reps} min`}
-                  {ex.unit === 'feet' && `Target: ${ex.target_reps} ft`}
-                  {ex.unit === 'custom' && ex.target_reps ? `Target: ${ex.target_reps}` : ''}
+                  {ex.unit === 'sets_reps' && `Per round: ${ex.target_sets} × ${ex.target_reps}`}
+                  {ex.unit === 'minutes' && `Per round: ${ex.target_reps} min`}
+                  {ex.unit === 'feet' && `Per round: ${ex.target_reps} ft`}
+                  {ex.unit === 'custom' && ex.target_reps ? `Per round: ${ex.target_reps}` : ''}
                 </span>
               </div>
+              {ex.weekly_goal > 0 && (() => {
+                const soFar = weekLogs.filter((p) => p.exercise_id === ex.id)
+                  .reduce((sum, p) => sum + Number(p.reps || 0), 0)
+                const left = ex.weekly_goal - soFar
+                const pct = Math.min(100, (soFar / ex.weekly_goal) * 100)
+                return (
+                  <div style={{ marginTop: 4 }}>
+                    <div className="progress" style={{ marginBottom: 3 }}>
+                      <div style={{ width: `${pct}%`, background: left <= 0 ? 'var(--green)' : undefined }} />
+                    </div>
+                    <div className="faint">
+                      This week <b>{soFar}</b> of {ex.weekly_goal} {unitShort(ex)} ·{' '}
+                      {left > 0
+                        ? <span>{left} {unitShort(ex)} to go</span>
+                        : <span style={{ color: 'var(--green)' }}>✓ goal met{left < 0 ? ` — ${-left} over` : ''}</span>}
+                    </div>
+                  </div>
+                )
+              })()}
               <div className="row" style={{ marginTop: 6 }}>
                 {ex.unit === 'sets_reps' ? (
                   <>
@@ -368,6 +401,11 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
                   </div>
                 </div>
               )}
+              <div style={{ marginBottom: 8 }}>
+                <label>Weekly goal ({exForm.unit === 'minutes' ? 'minutes' : exForm.unit === 'feet' ? 'feet' : 'reps'} per week · 0 for none)</label>
+                <input inputMode="numeric" value={exForm.weekly_goal}
+                  onChange={(e) => setExForm({ ...exForm, weekly_goal: e.target.value.replace(/[^0-9]/g, '') })} />
+              </div>
               {exForm.unit !== 'sets_reps' && (
                 <div style={{ marginBottom: 8 }}>
                   <label>Target {exForm.unit === 'minutes' ? '(minutes)' : exForm.unit === 'feet' ? '(feet)' : '(amount)'}</label>
@@ -384,7 +422,10 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
               <div className="feed-item" key={ex.id}>
                 <div>
                   <b>{ex.name}</b>
-                  <div className="faint">{UNIT_OPTIONS.find((o) => o.value === ex.unit)?.label ?? ex.unit}</div>
+                  <div className="faint">
+                    {UNIT_OPTIONS.find((o) => o.value === ex.unit)?.label ?? ex.unit}
+                    {ex.weekly_goal > 0 ? ` · goal ${ex.weekly_goal} ${unitShort(ex)}/week` : ''}
+                  </div>
                 </div>
                 <div className="row" style={{ flexShrink: 0 }}>
                   <button className="secondary" style={{ padding: '5px 9px', fontSize: 12 }} onClick={() => startEditEx(ex)}>Edit</button>
