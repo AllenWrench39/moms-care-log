@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
 } from 'recharts'
-import { supabase, fmtDateShort, VitalReading, Fluid } from '../supabase'
+import { supabase, fmtDateShort, VitalReading, Fluid, CareEvent } from '../supabase'
 
 function daysAgoStr(n: number) {
   const d = new Date()
@@ -10,16 +10,31 @@ function daysAgoStr(n: number) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// Consistency runs from backed-up to loose; the two ends get distinct hues and
+// normal sits in the middle in green, so a drift either way is visible.
+const BM_TYPES: { key: string; color: string }[] = [
+  { key: 'Hard', color: '#a0662f' },
+  { key: 'Normal', color: '#5a9a5a' },
+  { key: 'Soft', color: '#9cc79c' },
+  { key: 'Loose', color: '#8fb3d9' },
+  { key: 'Diarrhea', color: '#4a78b0' },
+  { key: 'Watery', color: '#2c4f80' },
+]
+
 const FLUID_COLORS = ['#5b9bd5', '#c17b4a', '#6a9e6a', '#9b6ab5', '#d5a03a', '#d5605b', '#6ab5b5', '#888888', '#b5856a']
 
 export default function ChartsPage() {
   const [vitals, setVitals] = useState<VitalReading[]>([])
   const [fluids, setFluids] = useState<Fluid[]>([])
+  const [bms, setBms] = useState<CareEvent[]>([])
 
   useEffect(() => {
     supabase.from('vital_readings').select('*')
       .gte('reading_date', daysAgoStr(30)).in('kind', ['bp', 'blood_sugar'])
       .order('reading_date').then(({ data }) => setVitals(data ?? []))
+    supabase.from('care_events').select('*').eq('kind', 'bm')
+      .gte('event_date', daysAgoStr(29)).order('event_date')
+      .then(({ data }) => setBms(data ?? []))
     supabase.from('fluids').select('*')
       .gte('fluid_date', daysAgoStr(7)).order('fluid_date')
       .then(({ data }) => setFluids(data ?? []))
@@ -57,6 +72,28 @@ export default function ChartsPage() {
     })
     return row
   })
+
+  // Every one of the last 30 days gets a bar slot, so days with no BM show as
+  // gaps rather than being skipped.
+  const bmDays = Array.from({ length: 30 }, (_, i) => daysAgoStr(29 - i))
+  const bmData = bmDays.map((d) => {
+    const row: Record<string, string | number> = { date: fmtDateShort(d) }
+    bms.filter((b) => b.event_date === d).forEach((b) => {
+      const type = b.detail.split(' · ')[1] ?? 'Normal'
+      row[type] = (Number(row[type]) || 0) + 1
+    })
+    return row
+  })
+  const bmTotal = bms.length
+  const bmAvg = bmTotal / 30
+  let longestGap = 0
+  let run = 0
+  bmDays.forEach((d) => {
+    if (bms.some((b) => b.event_date === d)) { run = 0 } else { run += 1; longestGap = Math.max(longestGap, run) }
+  })
+  const looseCount = bms.filter((b) => /Loose|Diarrhea|Watery/.test(b.detail)).length
+  const hardCount = bms.filter((b) => /Hard/.test(b.detail)).length
+  const bmTypesPresent = BM_TYPES.filter((t) => bms.some((b) => b.detail.includes(t.key)))
 
   const NoData = () => <div className="muted" style={{ padding: '10px 0' }}>Not enough data yet — keep logging daily!</div>
 
@@ -105,6 +142,41 @@ export default function ChartsPage() {
             </LineChart>
           </ResponsiveContainer>
         )}
+      </div>
+
+      <div className="sec sec-orange">
+        <div className="sec-title">💩 Bowel Movements — last 30 days</div>
+        {bmTotal > 0 && (
+          <div style={{ fontSize: 13, color: 'var(--ink)', marginBottom: 6, lineHeight: 1.6 }}>
+            <b>{bmAvg.toFixed(1)}</b> a day on average ({bmTotal} total)
+            {' · '}longest gap <b style={{ color: longestGap >= 3 ? 'var(--red)' : undefined }}>
+              {longestGap} {longestGap === 1 ? 'day' : 'days'}</b>
+            {(looseCount > 0 || hardCount > 0) && (
+              <> · {looseCount > 0 && <><b>{looseCount}</b> loose</>}
+                {looseCount > 0 && hardCount > 0 && ', '}
+                {hardCount > 0 && <><b>{hardCount}</b> hard</>}</>
+            )}
+          </div>
+        )}
+        {bmTotal === 0 ? <NoData /> : (
+          <ResponsiveContainer width="100%" height={210}>
+            <BarChart data={bmData} barCategoryGap={2}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0e4d0" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 9 }} interval={4} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 9 }} width={22} />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <ReferenceLine y={bmAvg} stroke="#7a6a5a" strokeDasharray="4 4" strokeOpacity={0.7} />
+              {bmTypesPresent.map((t, i) => (
+                <Bar key={t.key} dataKey={t.key} stackId="bm" fill={t.color}
+                  radius={i === bmTypesPresent.length - 1 ? [3, 3, 0, 0] : 0} />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+        <div className="muted" style={{ marginTop: 4 }}>
+          Empty days are gaps — 3 or more in a row is worth watching for constipation.
+        </div>
       </div>
 
       <div className="sec sec-blue">
