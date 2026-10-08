@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase, todayStr, fmtDateFull, fmtTime24, FamilyMember } from '../supabase'
+import { supabase, todayStr, fmtDateFull, fmtTime24, nowHHMM, FamilyMember } from '../supabase'
 import { useToast } from '../toast'
 
 // Days Mom gets picked up for an outing. One person opens the date; whoever is
@@ -76,8 +76,16 @@ export function PickupBanner() {
   }, [])
 
   const today = todayStr()
-  const away = rows.filter((p) => p.pickup_date <= today && endDate(p) >= today && p.claimed_by)
-  const soon = rows.filter((p) => p.pickup_date > today && daysUntil(p.pickup_date) <= NOTICE_DAYS)
+  // Compare clock times too: on pickup day she isn't gone until the pickup
+  // time, and on return day she's home once the drop-off time has passed.
+  const now = nowHHMM()
+  const hm = (t: string | null) => (t ?? '').slice(0, 5)
+  const leftYet = (p: Pickup) => p.pickup_date < today || !p.from_time || hm(p.from_time) <= now
+  const backYet = (p: Pickup) => endDate(p) === today && !!p.to_time && hm(p.to_time) <= now
+  const away = rows.filter((p) => p.pickup_date <= today && endDate(p) >= today && p.claimed_by
+    && leftYet(p) && !backYet(p))
+  const soon = rows.filter((p) => (p.pickup_date > today || (p.pickup_date === today && !leftYet(p)))
+    && daysUntil(p.pickup_date) <= NOTICE_DAYS)
   if (away.length === 0 && soon.length === 0) return null
 
   return (
