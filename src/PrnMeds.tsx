@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import { supabase, todayStr, fmtClock, fmtDateFull, stamp } from './supabase'
+import { supabase, todayStr, fmtClock, fmtDateFull, stamp, weekBounds } from './supabase'
 import { useToast } from './toast'
 
 // As-needed medicines and short courses live apart from the daily schedule:
 // adding them there would mark every unneeded day as a missed dose.
+// A course with total_doses 0 is ongoing (e.g. a cream twice a week until the
+// doctor stops it): its bar tracks this week's doses instead of a finish line.
 
 export type PrnMed = { id: string; name: string; dose_options: string[]; active: boolean; sort_order: number }
 export type MedCourse = {
@@ -41,7 +43,11 @@ function dueText(ms: number) {
   return `in ${Math.round(h / 24)} days`
 }
 
-const BLANK_COURSE = { name: '', dose: '', interval_hours: '24', total_doses: '3' }
+const BLANK_COURSE = { name: '', dose: '', interval_hours: '24', total_doses: '3', ongoing: false }
+
+// Doses expected per Mon–Sun week for an ongoing course, from its spacing.
+const perWeek = (c: MedCourse) => Math.max(1, Math.round(168 / c.interval_hours))
+const everyText = (h: number) => h % 24 === 0 && h >= 48 ? `every ${h / 24} days` : h === 84 ? 'twice a week' : `every ${h} hours`
 
 export default function PrnMeds({ nameOf, time, timeEdited }: {
   nameOf: (e: string) => string
@@ -53,6 +59,7 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
   const [courses, setCourses] = useState<MedCourse[]>([])
   const [logs, setLogs] = useState<PrnLog[]>([])
   const [recent, setRecent] = useState<PrnLog[]>([])
+  const [courseLogs, setCourseLogs] = useState<PrnLog[]>([])
   const [giving, setGiving] = useState<{ med: PrnMed; dose: string | null; reason: string | null } | null>(null)
   const [addCourse, setAddCourse] = useState(false)
   const [courseForm, setCourseForm] = useState(BLANK_COURSE)
@@ -62,23 +69,29 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
 
   async function load() {
     const today = todayStr()
-    const [m, c, l, r] = await Promise.all([
+    const [m, c, l, r, cl] = await Promise.all([
       supabase.from('prn_meds').select('*').eq('active', true).order('sort_order'),
       supabase.from('med_courses').select('*').eq('completed', false).order('started_at'),
       supabase.from('prn_logs').select('*').eq('log_date', today).order('created_at'),
       // Last given per item, for the double-dose guard on each button.
       supabase.from('prn_logs').select('*').order('created_at', { ascending: false }).limit(60),
+      // Every course dose, so counts stay right however busy the as-needed list gets.
+      supabase.from('prn_logs').select('*').not('course_id', 'is', null).order('created_at', { ascending: false }),
     ])
     setMeds(m.data ?? [])
     setCourses(c.data ?? [])
     setLogs(l.data ?? [])
     setRecent(r.data ?? [])
+    setCourseLogs(cl.data ?? [])
   }
 
   useEffect(() => { load() }, [])
 
   const lastGiven = (medId: string) => recent.find((r) => r.prn_med_id === medId)
-  const courseDoses = (courseId: string) => recent.filter((r) => r.course_id === courseId).length
+  const courseDoses = (courseId: string) => courseLogs.filter((r) => r.course_id === courseId).length
+  const week = weekBounds(todayStr())
+  const weekDoses = (courseId: string) => courseLogs.filter((r) =>
+    r.course_id === courseId && r.log_date >= week.start && r.log_date <= week.end).length
 
   async function giveNow() {
     if (!giving || !giving.dose) return
@@ -97,7 +110,9 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
       course_id: c.id, name: c.name, dose: c.dose, log_date: todayStr(),
       ...stamp(todayStr(), time, timeEdited),
     })
-    if (given + 1 >= c.total_doses) {
+    if (c.total_doses === 0) {
+      toast.show(`${c.name} — ${weekDoses(c.id) + 1} of ${perWeek(c)} this week ✓`)
+    } else if (given + 1 >= c.total_doses) {
       await supabase.from('med_courses').update({ completed: true }).eq('id', c.id)
       toast.show(`${c.name} course finished 🎉`)
     } else {
@@ -112,7 +127,7 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
       name: courseForm.name.trim(),
       dose: courseForm.dose.trim() || null,
       interval_hours: Number(courseForm.interval_hours) || 24,
-      total_doses: Number(courseForm.total_doses) || 1,
+      total_doses: courseForm.ongoing ? 0 : Number(courseForm.total_doses) || 1,
     })
     setCourseForm(BLANK_COURSE)
     setAddCourse(false)
@@ -121,7 +136,7 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
   }
 
   async function endCourse(c: MedCourse) {
-    if (!confirm(`End the ${c.name} course now?`)) return
+    if (!confirm(c.total_doses === 0 ? `Stop ${c.name}? (past doses are kept)` : `End the ${c.name} course now?`)) return
     await supabase.from('med_courses').update({ completed: true }).eq('id', c.id)
     load()
   }
@@ -154,10 +169,13 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
     <>
       {courses.length > 0 && (
         <div className="sec sec-red">
-          <div className="sec-title">💊 Short Course</div>
+          <div className="sec-title">💊 Courses</div>
           {courses.map((c) => {
             const given = courseDoses(c.id)
-            const last = recent.find((r) => r.course_id === c.id)
+            const ongoing = c.total_doses === 0
+            const thisWeek = weekDoses(c.id)
+            const goal = perWeek(c)
+            const last = courseLogs.find((r) => r.course_id === c.id)
             const nextDue = last
               ? new Date(last.created_at).getTime() + c.interval_hours * 3600000
               : null
@@ -168,7 +186,9 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
                   <div>
                     <b style={{ fontSize: 15 }}>{c.name}{c.dose ? ` ${c.dose}` : ''}</b>
                     <div className="muted" style={{ fontSize: 13 }}>
-                      Dose <b>{given} of {c.total_doses}</b> · every {c.interval_hours} hours
+                      {ongoing
+                        ? <>This week <b style={{ color: thisWeek >= goal ? 'var(--green)' : undefined }}>{thisWeek} of {goal}</b> · {everyText(c.interval_hours)} · ongoing ({given} given so far)</>
+                        : <>Dose <b>{given} of {c.total_doses}</b> · {everyText(c.interval_hours)}</>}
                     </div>
                     <div className="faint">
                       {last
@@ -181,10 +201,10 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
                   <button className="danger" style={{ flexShrink: 0 }} onClick={() => endCourse(c)}>End</button>
                 </div>
                 <div className="progress" style={{ margin: '8px 0 6px' }}>
-                  <div style={{ width: `${Math.min(100, (given / c.total_doses) * 100)}%` }} />
+                  <div style={{ width: `${Math.min(100, ongoing ? (thisWeek / goal) * 100 : (given / c.total_doses) * 100)}%` }} />
                 </div>
                 <button onClick={() => logCourseDose(c)}>
-                  Give dose {given + 1} of {c.total_doses}
+                  {ongoing ? `Give dose (${thisWeek + 1} of ${goal} this week)` : `Give dose ${given + 1} of ${c.total_doses}`}
                 </button>
               </div>
             )
@@ -256,12 +276,19 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
                 <input inputMode="numeric" value={courseForm.interval_hours}
                   onChange={(e) => setCourseForm({ ...courseForm, interval_hours: e.target.value.replace(/[^0-9]/g, '') })} />
               </div>
-              <div style={{ flex: 1 }}>
-                <label>Total doses</label>
-                <input inputMode="numeric" value={courseForm.total_doses}
-                  onChange={(e) => setCourseForm({ ...courseForm, total_doses: e.target.value.replace(/[^0-9]/g, '') })} />
-              </div>
+              {!courseForm.ongoing && (
+                <div style={{ flex: 1 }}>
+                  <label>Total doses</label>
+                  <input inputMode="numeric" value={courseForm.total_doses}
+                    onChange={(e) => setCourseForm({ ...courseForm, total_doses: e.target.value.replace(/[^0-9]/g, '') })} />
+                </div>
+              )}
             </div>
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '4px 0 10px' }}>
+              <input type="checkbox" style={{ width: 'auto', margin: 0 }} checked={courseForm.ongoing}
+                onChange={(e) => setCourseForm({ ...courseForm, ongoing: e.target.checked })} />
+              Ongoing — no end date (tip: 84 hours = twice a week)
+            </label>
             <button onClick={saveCourse}>Start course</button>
           </div>
         )}
