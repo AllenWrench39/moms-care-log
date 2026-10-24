@@ -7,7 +7,10 @@ import PillFillCard from '../PillFill'
 import PrnMeds from '../PrnMeds'
 
 const POWDER_AMOUNTS = ['½ tsp', '1 tsp', '2 tsp', '½ tbsp', '1 tbsp', '2 tbsp']
-const POWDER_ITEMS = ['Fiber', 'MiraLAX'] as const
+const POWDER_ITEMS = ['Fiber', 'MiraLAX', 'D-Mannose'] as const
+type PowderItem = typeof POWDER_ITEMS[number]
+// MiraLAX and fiber depend on her BMs; D-mannose (bladder) is every day.
+const DAILY_POWDERS: PowderItem[] = ['D-Mannose']
 
 const HOLD_REASONS = ['Refused', 'Nausea/Vomiting', 'Diarrhea', 'Low BP', 'Low Blood Sugar', 'Asleep', "Doctor's order", 'Out of stock', 'Other']
 
@@ -42,7 +45,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
   const [form, setForm] = useState({ name: '', dose: '', times: '', notes: '', with_food: false, hold_diarrhea: false, never_hold: false, scheduled_days: [] as number[] })
   const [showAdd, setShowAdd] = useState(false)
   const [powderLogs, setPowderLogs] = useState<PowderLog[]>([])
-  const [powderPicker, setPowderPicker] = useState<'Fiber' | 'MiraLAX' | null>(null)
+  const [powderPicker, setPowderPicker] = useState<PowderItem | null>(null)
 
   async function load() {
     const [m, d, s, pl] = await Promise.all([
@@ -57,7 +60,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
     setPowderLogs(pl.data ?? [])
   }
 
-  async function logPowder(item: 'Fiber' | 'MiraLAX', amount: string) {
+  async function logPowder(item: PowderItem, amount: string) {
     await supabase.from('powder_logs').insert({ item, amount, log_date: date, ...stamp(date, givenAt, timeEdited) })
     toast.show(`${item} ${amount} logged ✓`)
     setPowderPicker(null)
@@ -200,11 +203,16 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
         <div key={time}>
         {showPowderSection && (
           <div style={{ marginBottom: 10 }}>
-            <div className="med-time-head">🌾 Fiber &amp; MiraLAX</div>
+            <div className="med-time-head">🌾 Fiber, MiraLAX &amp; D-Mannose</div>
             {POWDER_ITEMS.map((item) => (
               <div className="med-row" key={item}>
                 <div className="row between">
-                  <b className="med-name">{item}</b>
+                  <b className="med-name">
+                    {item}
+                    {DAILY_POWDERS.includes(item) && !powderLogs.some((p) => p.item === item) && (
+                      <span className="badge" style={{ marginLeft: 6 }}>Daily — not given yet</span>
+                    )}
+                  </b>
                   <button className="btn-give" onClick={() => setPowderPicker(item)}>Log dose</button>
                 </div>
                 {powderLogs.filter((p) => p.item === item).map((p) => (
