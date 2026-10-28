@@ -18,9 +18,12 @@ const URINE_SYMPTOMS = [
 ]
 const PAD_TYPES = ['Bed/Chair Pad', 'Pamper Pad']
 const DAMPNESS = ['Dry', 'Damp', 'Wet', 'Soaked']
-// Pamper pads can also catch a BM, so that pad gets an extra choice.
+// Pamper pads can also catch a BM, so that pad gets an extra choice. A smear
+// left from wiping is its own choice so it isn't counted as a BM accident.
 const PAMPER_EXTRA = ['Poop', 'Wet + Poop']
-const HYGIENE_ITEMS = ['Bed Bath', 'Shower', 'Hair Wash', 'Nail Care', 'Oral Care', 'Skin Care', 'Pad Change', 'Repositioned']
+const PAMPER_SMEAR = 'Smear (from wiping)'
+// She usually sleeps in her chair, so only nights in bed get logged.
+const HYGIENE_ITEMS = ['Bed Bath', 'Shower', 'Hair Wash', 'Nail Care', 'Oral Care', 'Skin Care', 'Pad Change', 'Repositioned', 'Slept in Bed']
 const CLEANING_ITEMS = ['Bed Linens', 'Room Clean', 'Bathroom', 'Laundry', 'Trash', 'Floor Mop', 'Dishes', 'Supply Restock']
 // "Bathroom" covered anything from a sink wipe to a full clean, so the log could
 // not say whether the floor had been mopped. Tapping it now asks what was done.
@@ -472,6 +475,9 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
               {padTarget === 'Pamper Pad' && PAMPER_EXTRA.map((d) => (
                 <button key={d} className="chip" onClick={() => logPad(d)}>💩 {d}</button>
               ))}
+              {padTarget === 'Pamper Pad' && (
+                <button className="chip" onClick={() => logPad(PAMPER_SMEAR)}>🧻 {PAMPER_SMEAR}</button>
+              )}
             </div>
             <button className="secondary" style={{ width: '100%' }} onClick={() => setPadTarget(null)}>Cancel</button>
           </div>
