@@ -27,7 +27,7 @@ const VITAL_LABEL: Record<string, string> = Object.fromEntries(VITALS.map((v) =>
 export const SYMPTOMS = [
   'Nausea', 'Vomiting', 'Diarrhea', 'Constipation', 'Cramping', 'Dizziness', 'Shortness of breath',
   'Chest pain', 'Confusion', 'Fatigue', 'Swelling', 'Fall', 'No appetite',
-  'Poor sleep', 'Headache', 'Weakness', 'Hemorrhoids',
+  'Poor sleep', 'Headache', 'Weakness', 'Hemorrhoids', 'Coughing',
 ]
 
 export const DIARRHEA_WARNING =
@@ -61,7 +61,10 @@ function mealTypeForHour(h: number) {
   if (h < 20) return 'Dinner'
   return 'Snack'
 }
-const FLUID_TYPES = ['Water', 'Coffee', 'Tea', 'Juice', 'Lemon Water', 'Electrolytes', 'Soda', 'Milk', 'Broth', 'D-Mannose', 'Other']
+// Coughing asks how bad, saved as e.g. "Coughing · Light".
+const COUGH_LEVELS = ['Light', 'Medium', 'Heavy']
+
+const FLUID_TYPES = ['Water', 'Coffee', 'Tea', 'Juice', 'Lemon Water', 'Electrolytes', 'Soda', 'Milk', 'Broth', 'Other']
 const FLUID_GOAL_OZ = 64
 
 export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => string; myEmail: string }) {
@@ -88,6 +91,7 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   const [fluidType, setFluidType] = useState('Water')
   const [fluidOz, setFluidOz] = useState('8')
   const [newNote, setNewNote] = useState('')
+  const [coughPick, setCoughPick] = useState(false)
   const [symptomModalOpen, setSymptomModalOpen] = useState(false)
   const [symptomTime, setSymptomTime] = useState('')
 
@@ -141,6 +145,7 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   }
 
   function openSymptomModal() {
+    setCoughPick(false)
     setSymptomTime(isToday && !timeEdited ? nowHHMM() : time)
     setSymptomModalOpen(true)
   }
@@ -375,9 +380,20 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
             <input type="time" value={symptomTime} onChange={(e) => setSymptomTime(e.target.value)} style={{ marginBottom: 14 }} />
             <div className="chips" style={{ marginBottom: 14 }}>
               {SYMPTOMS.map((s) => (
-                <button key={s} className="chip" onClick={() => logSymptom(s)}>{s}</button>
+                <button key={s} className={`chip ${coughPick && s === 'Coughing' ? 'on' : ''}`}
+                  onClick={() => s === 'Coughing' ? setCoughPick(!coughPick) : logSymptom(s)}>{s}</button>
               ))}
             </div>
+            {coughPick && (
+              <>
+                <label>How bad is the cough?</label>
+                <div className="chips" style={{ marginBottom: 14 }}>
+                  {COUGH_LEVELS.map((l) => (
+                    <button key={l} className="chip" onClick={() => { logSymptom(`Coughing · ${l}`); setCoughPick(false) }}>{l}</button>
+                  ))}
+                </div>
+              </>
+            )}
             <button className="secondary" style={{ width: '100%' }} onClick={() => setSymptomModalOpen(false)}>Done</button>
           </div>
         </div>

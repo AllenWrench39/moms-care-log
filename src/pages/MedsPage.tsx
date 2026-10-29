@@ -269,7 +269,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
         )
       })}
 
-      {isToday && <PrnMeds nameOf={nameOf} time={givenAt} timeEdited={timeEdited} />}
+      <PrnMeds nameOf={nameOf} time={givenAt} timeEdited={timeEdited} date={date} />
 
       <div style={{ marginTop: 18 }}>
         <button className="ghost" onClick={() => setManage(!manage)}>
