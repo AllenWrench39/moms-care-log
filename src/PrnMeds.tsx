@@ -49,8 +49,10 @@ const BLANK_COURSE = { name: '', dose: '', interval_hours: '24', total_doses: '3
 const perWeek = (c: MedCourse) => Math.max(1, Math.round(168 / c.interval_hours))
 const everyText = (h: number) => h % 24 === 0 && h >= 48 ? `every ${h / 24} days` : h === 84 ? 'twice a week' : `every ${h} hours`
 
-export default function PrnMeds({ nameOf, time, timeEdited }: {
+// `date` lets the Meds tab show and log as-needed doses for a past day too.
+export default function PrnMeds({ nameOf, time, timeEdited, date = todayStr() }: {
   nameOf: (e: string) => string
+  date?: string
   time: string
   timeEdited: boolean
 }) {
@@ -68,7 +70,7 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
   const [newDoses, setNewDoses] = useState('')
 
   async function load() {
-    const today = todayStr()
+    const today = date
     const [m, c, l, r, cl] = await Promise.all([
       supabase.from('prn_meds').select('*').eq('active', true).order('sort_order'),
       supabase.from('med_courses').select('*').eq('completed', false).order('started_at'),
@@ -85,11 +87,11 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
     setCourseLogs(cl.data ?? [])
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [date])
 
   const lastGiven = (medId: string) => recent.find((r) => r.prn_med_id === medId)
   const courseDoses = (courseId: string) => courseLogs.filter((r) => r.course_id === courseId).length
-  const week = weekBounds(todayStr())
+  const week = weekBounds(date)
   const weekDoses = (courseId: string) => courseLogs.filter((r) =>
     r.course_id === courseId && r.log_date >= week.start && r.log_date <= week.end).length
 
@@ -97,7 +99,7 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
     if (!giving || !giving.dose) return
     await supabase.from('prn_logs').insert({
       prn_med_id: giving.med.id, name: giving.med.name, dose: giving.dose,
-      reason: giving.reason, log_date: todayStr(), ...stamp(todayStr(), time, timeEdited),
+      reason: giving.reason, log_date: date, ...stamp(date, time, timeEdited),
     })
     toast.show(`${giving.med.name} ${giving.dose} given ✓`)
     setGiving(null)
@@ -107,8 +109,8 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
   async function logCourseDose(c: MedCourse) {
     const given = courseDoses(c.id)
     await supabase.from('prn_logs').insert({
-      course_id: c.id, name: c.name, dose: c.dose, log_date: todayStr(),
-      ...stamp(todayStr(), time, timeEdited),
+      course_id: c.id, name: c.name, dose: c.dose, log_date: date,
+      ...stamp(date, time, timeEdited),
     })
     if (c.total_doses === 0) {
       toast.show(`${c.name} — ${weekDoses(c.id) + 1} of ${perWeek(c)} this week ✓`)
@@ -229,7 +231,7 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
                   {last
                     ? <span style={{ color: recentHours !== null && recentHours < 4 ? 'var(--red)' : undefined }}>
                         Last: {last.dose} · {sinceText(last.created_at)}
-                        {last.log_date !== todayStr() ? ` (${fmtDateFull(last.log_date).split(',')[0]})` : ''}
+                        {last.log_date !== date ? ` (${fmtDateFull(last.log_date).split(',')[0]})` : ''}
                       </span>
                     : 'Never logged'}
                 </div>
@@ -240,7 +242,7 @@ export default function PrnMeds({ nameOf, time, timeEdited }: {
 
         {logs.length > 0 && (
           <div style={{ marginTop: 12 }}>
-            <label>Given today</label>
+            <label>{date === todayStr() ? 'Given today' : 'Given this day'}</label>
             {logs.map((l) => (
               <div className="feed-item" key={l.id}>
                 <span>
