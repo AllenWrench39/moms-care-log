@@ -12,14 +12,17 @@ import CalendarPage from './pages/CalendarPage'
 import PickupsPage from './pages/PickupsPage'
 import TasksPage from './pages/TasksPage'
 import ExportPage from './pages/ExportPage'
+import PtPage from './pages/PtPage'
+import { getThemeChoice, setThemeChoice, ThemeChoice } from './theme'
 import { ConfirmHost } from './confirm'
 
-type Tab = 'today' | 'meds' | 'care' | 'charts' | 'history' | 'notes' | 'appts' | 'pickups' | 'tasks' | 'export'
+type Tab = 'today' | 'meds' | 'care' | 'pt' | 'charts' | 'history' | 'notes' | 'appts' | 'pickups' | 'tasks' | 'export'
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'today', label: 'Today', icon: '📋' },
   { id: 'meds', label: 'Meds', icon: '💊' },
   { id: 'care', label: 'Care', icon: '🛁' },
+  { id: 'pt', label: 'PT', icon: '🏋️' },
   { id: 'appts', label: 'Appts', icon: '🗓' },
   { id: 'charts', label: 'Charts', icon: '📈' },
   { id: 'history', label: 'History', icon: '📅' },
@@ -30,7 +33,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 ]
 
 // Always one tap away in the bottom bar; everything else lives under More.
-const PRIMARY_TABS: Tab[] = ['today', 'meds', 'care', 'appts']
+const PRIMARY_TABS: Tab[] = ['today', 'meds', 'care', 'pt']
 
 // Tabs visible in read-only "doctor mode"
 const DOCTOR_TABS: Tab[] = ['charts', 'history', 'notes', 'export']
@@ -43,6 +46,8 @@ export default function App() {
   const [allowed, setAllowed] = useState<boolean | null>(null)
   const [doctorMode, setDoctorMode] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
+  const [theme, setTheme] = useState<ThemeChoice>(getThemeChoice)
+  const pickTheme = (t: ThemeChoice) => { setThemeChoice(t); setTheme(t) }
   const [online, setOnline] = useState(navigator.onLine)
   const [saveFailed, setSaveFailed] = useState(false)
 
@@ -148,8 +153,9 @@ export default function App() {
         {activeTab === 'today' && <TodayPage nameOf={nameOf} myEmail={myEmail} onOpenMeds={() => go('meds')} />}
         {activeTab === 'meds' && <MedsPage nameOf={nameOf} />}
         {activeTab === 'care' && <CarePage nameOf={nameOf} />}
+        {activeTab === 'pt' && <PtPage nameOf={nameOf} />}
         {activeTab === 'charts' && <ChartsPage />}
-        {activeTab === 'history' && <HistoryPage nameOf={nameOf} />}
+        {activeTab === 'history' && <HistoryPage nameOf={nameOf} family={family} readOnly={doctorMode} />}
         {activeTab === 'notes' && <NotesPage nameOf={nameOf} readOnly={doctorMode} />}
         {activeTab === 'appts' && <CalendarPage family={family} nameOf={nameOf} />}
         {activeTab === 'pickups' && <PickupsPage family={family} myEmail={myEmail} nameOf={nameOf} />}
@@ -181,6 +187,12 @@ export default function App() {
                 <button key={t.id} className={activeTab === t.id ? 'active' : ''} onClick={() => go(t.id)}>
                   <span className="nav-ico" aria-hidden="true">{t.icon}</span>{t.label}
                 </button>
+              ))}
+            </div>
+            <div className="sheet-label">Appearance</div>
+            <div className="seg" role="group" aria-label="Appearance">
+              {([['auto', 'Auto'], ['light', '☀️ Light'], ['dark', '🌙 Dark']] as [ThemeChoice, string][]).map(([id, label]) => (
+                <button key={id} className={theme === id ? 'on' : ''} aria-pressed={theme === id} onClick={() => pickTheme(id)}>{label}</button>
               ))}
             </div>
             <div className="sheet-list">

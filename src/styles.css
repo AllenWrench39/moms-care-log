@@ -1,6 +1,7 @@
-/* Mom's Care Log — design tokens. Light by default, dark follows the phone. */
+/* Mom's Care Log — design tokens. src/theme.ts sets data-theme on <html>:
+   the phone's setting by default, or the choice made under More. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #faf7f2;
   --card: #ffffff;
   --field: #ffffff;
@@ -36,8 +37,8 @@
   --nav-h: 62px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+:root[data-theme="dark"] {
+    color-scheme: dark;
     --bg: #1c1815;
     --card: #28221d;
     --field: #1f1a16;
@@ -68,7 +69,6 @@
     --sec-yellow: #352d18;
     --sec-gray: #2a2521;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  }
 }
 
 * { box-sizing: border-box; }
@@ -135,7 +135,7 @@ h2 { font-size: 22px; margin: 0 0 12px; }
 }
 .banner-offline { background: var(--amber-soft); color: var(--amber-ink); }
 .banner-bad { background: var(--red); color: #fff; }
-@media (prefers-color-scheme: dark) { .banner-bad { background: #8c1d18; } }
+:root[data-theme="dark"] .banner-bad { background: #8c1d18; }
 .banner button { background: rgba(255, 255, 255, 0.22); color: inherit; min-height: 34px; padding: 4px 12px; font-size: 14px; }
 
 /* ---- Bottom navigation ---- */
@@ -448,6 +448,49 @@ label { font-size: 14px; font-weight: 600; color: var(--muted); display: block; 
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
 }
 .toast-bad { background: var(--red); color: #fff; border-radius: 14px; }
-@media (prefers-color-scheme: dark) { .toast-bad { background: #8c1d18; } }
+:root[data-theme="dark"] .toast-bad { background: #8c1d18; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ---- Segmented control (theme, view switches) ---- */
+.seg { display: flex; background: var(--neutral-soft); border-radius: 12px; padding: 4px; gap: 4px; }
+.seg button { flex: 1; background: transparent; color: var(--muted); min-height: 38px; padding: 6px 8px; font-size: 15px; border-radius: 9px; }
+.seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+.sheet-label { font-size: 14px; font-weight: 600; color: var(--muted); margin: 4px 0 6px; }
+
+/* ---- PT tab ---- */
+.weekstrip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 12px; }
+.weekstrip .wd { text-align: center; font-size: 13px; font-weight: 600; color: var(--muted); }
+.weekstrip .dot {
+  height: 34px; border-radius: 10px; margin-top: 4px;
+  background: var(--neutral-soft); color: var(--muted);
+  display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700;
+}
+.weekstrip .dot.did { background: var(--green-soft); color: var(--green); }
+.weekstrip .wd.sel .dot { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ex-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; margin-bottom: 12px; }
+.ex-card.met { border-color: var(--green); }
+.ex-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.ex-name { font-size: 18px; font-weight: 700; }
+.ex-count { font-size: 15px; font-weight: 700; white-space: nowrap; }
+.ex-card.met .ex-count { color: var(--green); }
+.progress.green > div { background: var(--green); }
+.ex-actions { display: flex; gap: 8px; margin-top: 10px; }
+.ex-actions .grow { flex: 1; }
+
+/* ---- History ---- */
+.hist-day { cursor: pointer; width: 100%; text-align: left; color: var(--ink); display: block; font-weight: 400; }
+.hist-day .hd-date { font-size: 17px; font-weight: 700; display: flex; justify-content: space-between; gap: 8px; }
+.hist-day .hd-line { font-size: 15px; color: var(--muted); margin-top: 4px; }
+.flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.flag { font-size: 13px; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: var(--red-soft); color: var(--red); }
+.flag.amber { background: var(--amber-soft); color: var(--amber-ink); }
+.filterbar { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; margin: 0 -14px 10px; padding-left: 14px; padding-right: 14px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.filterbar::-webkit-scrollbar { display: none; }
+.filterbar .chip { flex: 0 0 auto; }
+.tl-date { font-size: 15px; font-weight: 700; color: var(--accent); background: none; padding: 0; min-height: 36px; margin-top: 10px; }
+.tl-item { display: grid; grid-template-columns: 76px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 16px; }
+.tl-item:last-child { border-bottom: none; }
+.tl-time { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
+.tl-item.bad .tl-text { color: var(--red); }
+.tl-item mark { background: var(--amber-soft); color: var(--amber-ink); border-radius: 3px; padding: 0 2px; }

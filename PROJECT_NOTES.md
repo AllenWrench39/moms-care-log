@@ -66,3 +66,15 @@ Supabase row-level security (RLS).
 - `confirmDialog()` in `src/confirm.tsx` replaces the browser `confirm()`.
 - Optional, not yet applied: `supabase/2026-11-09-realtime-meals-symptoms.sql`
   (live updates for meals and symptoms).
+
+## Nov 2026 — history, PT tab, theme (branch `history-pt-theme`)
+- History (`src/pages/HistoryPage.tsx`) loads every table for the chosen range
+  into one `Entry` list: search, type filters, by-caregiver, date jump, and a
+  day view with Timeline / By type. No 30-day cap; notes use the local day.
+- PT has its own tab (`src/pages/PtPage.tsx`); it is no longer on Care.
+  Bottom bar is Today, Meds, Care, PT, More — Appts moved under More.
+- Foot Rub (Care → Hygiene) is saved as hygiene detail `Foot Rub · N min`.
+- Powder Skip is saved as a `powder_logs` row with amount `Skipped`
+  (`POWDER_SKIPPED`). No schema change.
+- Theme: `src/theme.ts` sets `data-theme` on `<html>`; Auto / Light / Dark is
+  under More and is remembered per phone.

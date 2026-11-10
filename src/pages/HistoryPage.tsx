@@ -1,270 +1,451 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
-  supabase, fmtDateFull, fmtClock, fmtTime24,
-  VitalReading, DaySymptom, Meal, Fluid, LogEntry, MedDose, Medication, CareEvent, PtLog, PtExercise,
+  supabase, todayStr, fmtDateFull, fmtClock, fmtTime24, dayStart, FamilyMember,
+  VitalReading, DaySymptom, Meal, Fluid, LogEntry, MedDose, Medication, CareEvent, PtLog, PtExercise, PowderLog,
 } from '../supabase'
+import { amountPct } from './TodayPage'
+import { POWDER_SKIPPED } from './MedsPage'
+import { shiftDay } from '../DayNav'
+import { useToast } from '../toast'
 
-function daysAgoStr(n: number) {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
+// ---- one shape for everything that can be logged ----
+type Kind =
+  | 'vital' | 'symptom' | 'meal' | 'fluid' | 'note'
+  | 'given' | 'held' | 'prn' | 'powder'
+  | 'bm' | 'urine' | 'urine_symptom' | 'pad' | 'hygiene' | 'cleaning' | 'pill_fill'
+  | 'pt'
+
+type Entry = {
+  key: string
+  id: string
+  kind: Kind
+  date: string        // the calendar day it belongs to (YYYY-MM-DD)
+  at: string          // when it happened / was logged (ISO)
+  text: string
+  by: string
+  bad?: boolean       // shown in red: symptoms, held or skipped meds
+  sub?: string        // vital kind or symptom name
+  val?: string        // a vital's raw value, for editing
+  num?: number        // fluid oz or meal percent
+}
+
+type PrnLog = { id: string; name: string; dose: string | null; reason: string | null; log_date: string; created_at: string; created_by: string }
+
+const KIND: Record<Kind, { icon: string; label: string; group: string; tone: string }> = {
+  symptom:       { icon: '⚠️', label: 'Symptom',         group: 'Symptoms',          tone: 'red' },
+  urine_symptom: { icon: '🚽', label: 'Urinary symptom', group: 'Urinary symptoms',  tone: 'red' },
+  held:          { icon: '⏸', label: 'Med held',        group: 'Meds held',         tone: 'red' },
+  vital:         { icon: '📊', label: 'Vital',           group: 'Vitals',            tone: 'green' },
+  given:         { icon: '💊', label: 'Med given',       group: 'Meds given',        tone: 'green' },
+  prn:           { icon: '💊', label: 'As-needed med',   group: 'As-needed meds',    tone: 'green' },
+  powder:        { icon: '🌾', label: 'Powder',          group: 'Fiber, MiraLAX & D-Mannose', tone: 'green' },
+  meal:          { icon: '🍽', label: 'Meal',            group: 'Meals',             tone: 'orange' },
+  fluid:         { icon: '💧', label: 'Fluid',           group: 'Fluids',            tone: 'blue' },
+  bm:            { icon: '💩', label: 'BM',              group: 'Bowel movements',   tone: 'orange' },
+  urine:         { icon: '💛', label: 'Urine',           group: 'Urine',             tone: 'yellow' },
+  pad:           { icon: '🛏', label: 'Pad change',      group: 'Pad changes',       tone: 'blue' },
+  hygiene:       { icon: '🛁', label: 'Hygiene',         group: 'Hygiene',           tone: 'blue' },
+  cleaning:      { icon: '🧹', label: 'Cleaning',        group: 'Cleaning',          tone: 'gray' },
+  pill_fill:     { icon: '💊', label: 'Pill box fill',   group: 'Pill box fills',    tone: 'gray' },
+  pt:            { icon: '🏋️', label: 'PT',              group: 'Physical therapy',  tone: 'green' },
+  note:          { icon: '📝', label: 'Note',            group: 'Notes',             tone: 'purple' },
+}
+const KIND_ORDER = Object.keys(KIND) as Kind[]
+
+const FILTERS: { id: string; label: string; test: (e: Entry) => boolean }[] = [
+  { id: 'all',      label: 'All',            test: () => true },
+  { id: 'symptoms', label: '⚠️ Symptoms',    test: (e) => e.kind === 'symptom' || e.kind === 'urine_symptom' },
+  { id: 'held',     label: '⏸ Held / skipped', test: (e) => e.kind === 'held' || (e.kind === 'powder' && !!e.bad) },
+  { id: 'meds',     label: '💊 Meds',        test: (e) => ['given', 'held', 'prn', 'powder'].includes(e.kind) },
+  { id: 'vitals',   label: '📊 Vitals',      test: (e) => e.kind === 'vital' },
+  { id: 'meals',    label: '🍽 Meals',       test: (e) => e.kind === 'meal' },
+  { id: 'fluids',   label: '💧 Fluids',      test: (e) => e.kind === 'fluid' },
+  { id: 'bathroom', label: '🚽 Bathroom',    test: (e) => ['bm', 'urine', 'pad'].includes(e.kind) },
+  { id: 'care',     label: '🛁 Care',        test: (e) => ['hygiene', 'cleaning', 'pill_fill'].includes(e.kind) },
+  { id: 'pt',       label: '🏋️ PT',          test: (e) => e.kind === 'pt' },
+  { id: 'notes',    label: '📝 Notes',       test: (e) => e.kind === 'note' },
+]
+
+const RANGES = [{ days: 7, label: '7 days' }, { days: 30, label: '30 days' }, { days: 90, label: '90 days' }, { days: 0, label: 'All time' }]
+
+const VITAL_LABEL: Record<string, string> = {
+  bp: 'Blood pressure', heart_rate: 'Heart rate', temp: 'Temperature', o2: 'O2 sat',
+  weight: 'Weight', blood_sugar: 'Blood sugar', pain: 'Pain', mood: 'Mood',
+}
+const LOW_FLUID_OZ = 32   // half the 64 oz daily goal
+const PAGE = 200          // search results shown before "show more"
+
+function localDate(iso: string) {
+  const d = new Date(iso)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-type DayData = {
-  vitals: VitalReading[]
-  symptoms: DaySymptom[]
-  meals: Meal[]
-  fluids: Fluid[]
-  notes: LogEntry[]
-  doses: MedDose[]
-  care: CareEvent[]
-  pt: PtLog[]
+// Supabase returns at most 1,000 rows per request, so page until done.
+async function fetchAll<T>(table: string, col: string, since: string, isTimestamp = false): Promise<T[]> {
+  const out: T[] = []
+  for (let from = 0; ; from += 1000) {
+    let q = supabase.from(table).select('*')
+    if (since) q = q.gte(col, isTimestamp ? dayStart(since) : since)
+    const { data, error } = await q.order(col).order('id').range(from, from + 999)
+    if (error || !data) break
+    out.push(...(data as T[]))
+    if (data.length < 1000) break
+  }
+  return out
 }
 
-export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string }) {
-  const [days, setDays] = useState<string[]>([])
+function Highlight({ text, q }: { text: string; q: string }) {
+  if (!q) return <>{text}</>
+  const i = text.toLowerCase().indexOf(q)
+  if (i < 0) return <>{text}</>
+  return <>{text.slice(0, i)}<mark>{text.slice(i, i + q.length)}</mark>{text.slice(i + q.length)}</>
+}
+
+export default function HistoryPage({ nameOf, family, readOnly }: {
+  nameOf: (e: string) => string; family: FamilyMember[]; readOnly?: boolean
+}) {
+  const today = todayStr()
+  const toast = useToast()
+  const [entries, setEntries] = useState<Entry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [rangeDays, setRangeDays] = useState(30)
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState('all')
+  const [person, setPerson] = useState('')
+  const [shown, setShown] = useState(PAGE)
   const [selected, setSelected] = useState<string | null>(null)
-  const [day, setDay] = useState<DayData | null>(null)
-  const [meds, setMeds] = useState<Medication[]>([])
-  const [exercises, setExercises] = useState<PtExercise[]>([])
-  const [summaries, setSummaries] = useState<Record<string, string[]>>({})
-  const [editingVital, setEditingVital] = useState<VitalReading | null>(null)
+  const [dayView, setDayViewRaw] = useState<'timeline' | 'grouped'>(
+    () => (localStorage.getItem('history-day-view') === 'grouped' ? 'grouped' : 'timeline'))
+  const setDayView = (v: 'timeline' | 'grouped') => {
+    setDayViewRaw(v)
+    try { localStorage.setItem('history-day-view', v) } catch { /* private mode */ }
+  }
+  const [editing, setEditing] = useState<Entry | null>(null)
   const [editValue, setEditValue] = useState('')
   const [editTime, setEditTime] = useState('')
 
-  useEffect(() => {
-    const since = daysAgoStr(30)
-    Promise.all([
-      supabase.from('vital_readings').select('reading_date,kind,value').gte('reading_date', since),
-      supabase.from('fluids').select('fluid_date,oz').gte('fluid_date', since),
-      supabase.from('meals').select('meal_date').gte('meal_date', since),
-      supabase.from('med_doses').select('dose_date,status').gte('dose_date', since),
-      supabase.from('care_events').select('event_date,kind').gte('event_date', since),
+  const since = rangeDays ? shiftDay(today, -(rangeDays - 1)) : ''
+
+  async function load() {
+    setLoading(true)
+    const [v, s, m, f, n, d, c, p, prn, pw, medsRes, exRes] = await Promise.all([
+      fetchAll<VitalReading>('vital_readings', 'reading_date', since),
+      fetchAll<DaySymptom>('day_symptoms', 'sym_date', since),
+      fetchAll<Meal>('meals', 'meal_date', since),
+      fetchAll<Fluid>('fluids', 'fluid_date', since),
+      fetchAll<LogEntry>('log_entries', 'created_at', since, true),
+      fetchAll<MedDose>('med_doses', 'dose_date', since),
+      fetchAll<CareEvent>('care_events', 'event_date', since),
+      fetchAll<PtLog>('pt_logs', 'log_date', since),
+      fetchAll<PrnLog>('prn_logs', 'log_date', since),
+      fetchAll<PowderLog>('powder_logs', 'log_date', since),
       supabase.from('medications').select('*'),
       supabase.from('pt_exercises').select('*'),
-    ]).then(([v, f, m, d, c, medsRes, exRes]) => {
-      setMeds(medsRes.data ?? [])
-      setExercises(exRes.data ?? [])
-      const tags: Record<string, string[]> = {}
-      const push = (date: string, tag: string) => { (tags[date] ||= []).includes(tag) || tags[date].push(tag) }
-      ;(v.data ?? []).forEach((r) => { if (r.kind === 'bp') push(r.reading_date, 'BP ' + r.value); if (r.kind === 'blood_sugar') push(r.reading_date, 'BS ' + r.value) })
-      const ozByDay: Record<string, number> = {}
-      ;(f.data ?? []).forEach((r) => { ozByDay[r.fluid_date] = (ozByDay[r.fluid_date] || 0) + Number(r.oz) })
-      Object.entries(ozByDay).forEach(([date, oz]) => push(date, `💧${oz}oz`))
-      const mealCount: Record<string, number> = {}
-      ;(m.data ?? []).forEach((r) => { mealCount[r.meal_date] = (mealCount[r.meal_date] || 0) + 1 })
-      Object.entries(mealCount).forEach(([date, n]) => push(date, `🍽 ${n}`))
-      const givenCount: Record<string, number> = {}
-      const heldCount: Record<string, number> = {}
-      ;(d.data ?? []).forEach((r) => {
-        if (r.status === 'given') givenCount[r.dose_date] = (givenCount[r.dose_date] || 0) + 1
-        else heldCount[r.dose_date] = (heldCount[r.dose_date] || 0) + 1
-      })
-      Object.entries(givenCount).forEach(([date, n]) => push(date, `💊 ${n}`))
-      Object.entries(heldCount).forEach(([date, n]) => push(date, `⏸ ${n} held`))
-      const voids: Record<string, number> = {}
-      ;(c.data ?? []).forEach((r) => {
-        if (r.kind === 'bm') push(r.event_date, '💩')
-        if (r.kind === 'urine') voids[r.event_date] = (voids[r.event_date] || 0) + 1
-        if (r.kind === 'urine_symptom') push(r.event_date, '🚽')
-      })
-      Object.entries(voids).forEach(([date, n]) => push(date, `💛 ${n}`))
-      setSummaries(tags)
-      setDays(Object.keys(tags).sort().reverse())
-    })
-  }, [])
+    ])
+    const meds: Medication[] = medsRes.data ?? []
+    const exercises: PtExercise[] = exRes.data ?? []
+    // Prefer the name snapshot stored on the log row, so history does not
+    // change when a medication or exercise is edited later.
+    const medName = (x: MedDose) => {
+      if (x.med_name) return `${x.med_name} ${x.med_dose ?? ''}`.trim()
+      const med = meds.find((y) => y.id === x.medication_id)
+      return med ? `${med.name} ${med.dose ?? ''}`.trim() : 'Unknown med'
+    }
+    const ptText = (x: PtLog) => {
+      const ex = exercises.find((y) => y.id === x.exercise_id)
+      const name = x.exercise_name ?? ex?.name ?? 'Exercise'
+      const unit = x.exercise_unit ?? ex?.unit ?? 'sets_reps'
+      const amt = unit === 'sets_reps' ? `${x.sets} × ${x.reps}` : unit === 'minutes' ? `${x.reps} min` : unit === 'feet' ? `${x.reps} ft` : `${x.reps}`
+      return `${name}: ${amt}`
+    }
 
-  useEffect(() => {
-    if (!selected) { setDay(null); return }
-    const d = selected
-    Promise.all([
-      supabase.from('vital_readings').select('*').eq('reading_date', d).order('created_at'),
-      supabase.from('day_symptoms').select('*').eq('sym_date', d).order('created_at'),
-      supabase.from('meals').select('*').eq('meal_date', d).order('created_at'),
-      supabase.from('fluids').select('*').eq('fluid_date', d).order('created_at'),
-      supabase.from('log_entries').select('*').gte('created_at', d + 'T00:00:00').lt('created_at', d + 'T23:59:59').order('created_at'),
-      supabase.from('med_doses').select('*').eq('dose_date', d),
-      supabase.from('care_events').select('*').eq('event_date', d).order('created_at'),
-      supabase.from('pt_logs').select('*').eq('log_date', d),
-    ]).then(([v, s, m, f, n, doses, c, p]) => {
-      setDay({
-        vitals: v.data ?? [], symptoms: s.data ?? [], meals: m.data ?? [], fluids: f.data ?? [],
-        notes: n.data ?? [], doses: doses.data ?? [], care: c.data ?? [], pt: p.data ?? [],
-      })
-    })
-  }, [selected])
+    const all: Entry[] = [
+      ...v.map((x): Entry => ({ key: 'v' + x.id, id: x.id, kind: 'vital', date: x.reading_date, at: x.created_at, by: x.created_by,
+        text: `${VITAL_LABEL[x.kind] ?? x.kind.replace('_', ' ')} ${x.value}`, sub: x.kind, val: x.value })),
+      ...s.map((x): Entry => ({ key: 's' + x.id, id: x.id, kind: 'symptom', date: x.sym_date, at: x.created_at, by: x.created_by,
+        text: x.symptom, sub: x.symptom, bad: true })),
+      ...m.map((x): Entry => ({ key: 'm' + x.id, id: x.id, kind: 'meal', date: x.meal_date, at: x.created_at, by: x.created_by,
+        text: `${x.meal_type}: ${x.description}${x.amount ? ` — ${x.amount}` : ''}`, num: amountPct(x.amount) ?? undefined })),
+      ...f.map((x): Entry => ({ key: 'f' + x.id, id: x.id, kind: 'fluid', date: x.fluid_date, at: x.created_at, by: x.created_by,
+        text: `${x.oz} oz ${x.fluid_type}`, num: Number(x.oz) || 0 })),
+      // Notes have no date column; use the local day they were written.
+      ...n.map((x): Entry => ({ key: 'n' + x.id, id: x.id, kind: 'note', date: localDate(x.created_at), at: x.created_at, by: x.author_email,
+        text: x.note })),
+      ...d.map((x): Entry => x.status === 'held'
+        ? { key: 'd' + x.id, id: x.id, kind: 'held', date: x.dose_date, at: x.created_at, by: x.created_by, bad: true,
+            text: `${medName(x)} (${fmtTime24(x.dose_time)} dose) — held: ${x.hold_reason ?? 'no reason given'}` }
+        : { key: 'd' + x.id, id: x.id, kind: 'given', date: x.dose_date, at: x.created_at, by: x.created_by,
+            text: `${medName(x)} (${fmtTime24(x.dose_time)} dose)` }),
+      ...prn.map((x): Entry => ({ key: 'r' + x.id, id: x.id, kind: 'prn', date: x.log_date, at: x.created_at, by: x.created_by,
+        text: `${x.name}${x.dose ? ` ${x.dose}` : ''}${x.reason ? ` — ${x.reason}` : ''}` })),
+      ...pw.map((x): Entry => ({ key: 'w' + x.id, id: x.id, kind: 'powder', date: x.log_date, at: x.created_at, by: x.created_by,
+        text: x.amount === POWDER_SKIPPED ? `${x.item} — skipped` : `${x.item} ${x.amount}`, bad: x.amount === POWDER_SKIPPED })),
+      ...c.filter((x) => x.kind in KIND).map((x): Entry => ({ key: 'c' + x.id, id: x.id, kind: x.kind as Kind, date: x.event_date, at: x.created_at, by: x.created_by,
+        text: x.detail, bad: x.kind === 'urine_symptom' })),
+      ...p.map((x): Entry => ({ key: 'p' + x.id, id: x.id, kind: 'pt', date: x.log_date, at: x.created_at, by: x.created_by,
+        text: ptText(x) })),
+    ]
+    all.sort((a, b) => (a.date === b.date ? a.at.localeCompare(b.at) : a.date.localeCompare(b.date)))
+    setEntries(all)
+    setLoading(false)
+  }
 
-  function startEditVital(v: VitalReading) {
-    setEditingVital(v)
-    setEditValue(v.value)
-    const d = new Date(v.created_at)
+  useEffect(() => { load() }, [rangeDays])
+  useEffect(() => { setShown(PAGE) }, [query, filter, person, rangeDays])
+
+  const byDay = useMemo(() => {
+    const map: Record<string, Entry[]> = {}
+    entries.forEach((e) => { (map[e.date] ||= []).push(e) })
+    return map
+  }, [entries])
+  const days = useMemo(() => Object.keys(byDay).sort().reverse(), [byDay])
+
+  const q = query.trim().toLowerCase()
+  const activeFilter = FILTERS.find((x) => x.id === filter) ?? FILTERS[0]
+  const searching = !!q || filter !== 'all' || !!person
+  const matches = useMemo(() => {
+    if (!searching) return []
+    return entries.filter((e) =>
+      activeFilter.test(e) &&
+      (!person || e.by?.toLowerCase() === person) &&
+      (!q || e.text.toLowerCase().includes(q) || KIND[e.kind].label.toLowerCase().includes(q))
+    ).reverse()
+  }, [entries, q, filter, person])
+
+  function startEdit(e: Entry) {
+    setEditing(e)
+    setEditValue(e.val ?? '')
+    const d = new Date(e.at)
     setEditTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
   }
 
-  async function saveVitalEdit() {
-    if (!editingVital) return
-    const value = editValue.trim()
-    if (!value) return
-    const d = new Date(editingVital.created_at)
+  async function saveEdit() {
+    if (!editing || !editValue.trim()) return
+    const d = new Date(editing.at)
     const [hh, mm] = editTime.split(':').map(Number)
     if (!isNaN(hh) && !isNaN(mm)) d.setHours(hh, mm, 0, 0)
-    await supabase.from('vital_readings').update({ value, created_at: d.toISOString() }).eq('id', editingVital.id)
-    setEditingVital(null)
-    if (selected) {
-      const v = await supabase.from('vital_readings').select('*').eq('reading_date', selected).order('created_at')
-      setDay((prev) => prev ? { ...prev, vitals: v.data ?? [] } : prev)
-    }
+    const { error } = await supabase.from('vital_readings')
+      .update({ value: editValue.trim(), created_at: d.toISOString() }).eq('id', editing.id)
+    if (error) { toast.show(''); return }
+    setEditing(null)
+    toast.show('Reading updated ✓')
+    load()
   }
 
-  // Prefer the snapshot stored on the log row so history stays static
-  // when a medication/exercise is later edited; fall back to a lookup
-  // for rows logged before snapshots existed.
-  const medName = (x: MedDose) => {
-    if (x.med_name) return `${x.med_name} ${x.med_dose ?? ''}`.trim()
-    const m = meds.find((y) => y.id === x.medication_id)
-    return m ? `${m.name} ${m.dose ?? ''}`.trim() : 'Unknown med'
+  function pickDate(d: string) {
+    if (!d || d > today) return
+    if (since && d < since) setRangeDays(0)   // reach back as far as needed
+    setSelected(d)
   }
-  const exName = (p: PtLog) => p.exercise_name ?? exercises.find((x) => x.id === p.exercise_id)?.name ?? 'Exercise'
-  const exUnit = (p: PtLog) => p.exercise_unit ?? exercises.find((x) => x.id === p.exercise_id)?.unit ?? 'sets_reps'
 
-  if (selected && day) {
-    const totalOz = day.fluids.reduce((s, f) => s + Number(f.oz), 0)
-    const given = day.doses.filter((x) => x.status === 'given')
-    const held = day.doses.filter((x) => x.status === 'held')
-    const careKinds: { kind: string; label: string }[] = [
-      { kind: 'bm', label: '💩 Bowel Movements' }, { kind: 'urine', label: '💛 Urine' },
-      { kind: 'urine_symptom', label: '🚽 Urinary Symptoms' }, { kind: 'pad', label: '🛏 Pad Changes' },
-      { kind: 'hygiene', label: '🛁 Hygiene' }, { kind: 'cleaning', label: '🧹 Cleaning' },
-      { kind: 'pill_fill', label: '💊 Pill Box Fills' },
-    ]
+  // A plain function, not a component: a component defined here would be
+  // recreated on every keystroke and drop focus from the edit fields.
+  const row = (e: Entry, showKind = true) => (
+    editing?.key === e.key ? (
+      <div className="tl-item" key={e.key} style={{ gridTemplateColumns: '1fr' }}>
+        <div>
+          <label>{VITAL_LABEL[e.sub ?? ''] ?? 'Reading'}</label>
+          <div className="row">
+            <input className="grow" value={editValue} onChange={(ev) => setEditValue(ev.target.value)} />
+            <input type="time" value={editTime} onChange={(ev) => setEditTime(ev.target.value)} style={{ width: 130 }} />
+          </div>
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="grow" onClick={saveEdit}>Save</button>
+            <button className="secondary" onClick={() => setEditing(null)}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    ) : (
+      <div className={`tl-item ${e.bad ? 'bad' : ''}`} key={e.key}>
+        <div className="tl-time">{fmtClock(e.at)}</div>
+        <div>
+          <div className="tl-text">
+            {showKind && <span className="tag">{KIND[e.kind].icon} {KIND[e.kind].label}</span>}
+            <Highlight text={e.text} q={q} />
+          </div>
+          <div className="row between">
+            <span className="faint">{nameOf(e.by)}</span>
+            {e.kind === 'vital' && !readOnly && (
+              <button className="ghost" style={{ minHeight: 32, padding: '2px 8px' }} onClick={() => startEdit(e)}>Edit</button>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  )
+
+  // ================= one day =================
+  if (selected) {
+    const list = byDay[selected] ?? []
+    const idx = days.indexOf(selected)
+    // days is newest-first; "older" is the next index.
+    const older = idx >= 0 ? days[idx + 1] : days.find((d) => d < selected)
+    const newer = idx > 0 ? days[idx - 1] : idx < 0 ? [...days].reverse().find((d) => d > selected) : undefined
     return (
       <>
-        <button className="secondary" style={{ marginBottom: 12 }} onClick={() => setSelected(null)}>← Back</button>
-        <h3 style={{ marginTop: 0 }}>{fmtDateFull(selected)}</h3>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <button className="secondary" onClick={() => { setSelected(null); setEditing(null) }}>← {searching ? 'Results' : 'All days'}</button>
+          <span className="grow" />
+          <button className="secondary" aria-label="Older day" disabled={!older} onClick={() => older && setSelected(older)}>◀</button>
+          <button className="secondary" aria-label="Newer day" disabled={!newer} onClick={() => newer && setSelected(newer)}>▶</button>
+        </div>
+        <h2 style={{ marginBottom: 4 }}>{fmtDateFull(selected)}</h2>
+        <DaySummary list={list} date={selected} today={today} />
 
-        {day.vitals.length > 0 && (
-          <div className="sec sec-green">
-            <div className="sec-title">Vitals</div>
-            {day.vitals.map((v) =>
-              editingVital?.id === v.id ? (
-                <div className="feed-item" key={v.id}>
-                  <div className="row grow" style={{ gap: 6 }}>
-                    <input className="grow" value={editValue} onChange={(e) => setEditValue(e.target.value)} />
-                    <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} style={{ width: 120 }} />
-                  </div>
-                  <div className="row" style={{ flexShrink: 0 }}>
-                    <button onClick={saveVitalEdit}>Save</button>
-                    <button className="secondary" onClick={() => setEditingVital(null)}>Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="feed-item" key={v.id}>
-                  <div style={{ fontSize: 15 }}>
-                    <b>{v.kind.replace('_', ' ')}:</b> {v.value} <span className="faint">{fmtClock(v.created_at)} · {nameOf(v.created_by)}</span>
-                  </div>
-                  <button className="secondary" style={{ padding: '5px 9px', fontSize: 14, flexShrink: 0 }} onClick={() => startEditVital(v)}>Edit</button>
-                </div>
-              )
-            )}
-            {day.symptoms.length > 0 && (
-              <div style={{ fontSize: 15, padding: '3px 0' }}>
-                <b>Symptoms:</b> {[...day.symptoms].reverse().map((s) => `${s.symptom} (${fmtClock(s.created_at)})`).join(', ')}
-              </div>
-            )}
+        <div className="seg" style={{ margin: '12px 0' }}>
+          <button className={dayView === 'timeline' ? 'on' : ''} onClick={() => setDayView('timeline')}>Timeline</button>
+          <button className={dayView === 'grouped' ? 'on' : ''} onClick={() => setDayView('grouped')}>By type</button>
+        </div>
+
+        {loading && <p className="muted center">Loading…</p>}
+        {!loading && list.length === 0 && <p className="muted center">Nothing was logged this day.</p>}
+
+        {dayView === 'timeline' && list.length > 0 && (
+          <div className="card">
+            {[...list].sort((a, b) => a.at.localeCompare(b.at)).map((e) => row(e))}
           </div>
         )}
 
-        {day.meals.length > 0 && (
-          <div className="sec sec-orange">
-            <div className="sec-title">Meals</div>
-            {day.meals.map((m) => (
-              <div key={m.id} style={{ fontSize: 15, padding: '3px 0' }}>
-                <b>{m.meal_type}:</b> {m.description}{m.amount ? ` (${m.amount})` : ''} <span className="faint">{fmtClock(m.created_at)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {day.fluids.length > 0 && (
-          <div className="sec sec-blue">
-            <div className="sec-title">Fluids — {totalOz} oz</div>
-            {day.fluids.map((f) => (
-              <div key={f.id} style={{ fontSize: 15, padding: '3px 0' }}>{f.oz} oz {f.fluid_type} <span className="faint">{fmtClock(f.created_at)} · {nameOf(f.created_by)}</span></div>
-            ))}
-          </div>
-        )}
-
-        {given.length > 0 && (
-          <div className="sec sec-green">
-            <div className="sec-title">Meds Given</div>
-            {given.map((x) => (
-              <div key={x.id} style={{ fontSize: 15, padding: '3px 0' }}>✓ {medName(x)} @ {fmtTime24(x.dose_time)} <span className="faint">{fmtClock(x.created_at)} · {nameOf(x.created_by)}</span></div>
-            ))}
-          </div>
-        )}
-
-        {held.length > 0 && (
-          <div className="sec sec-red">
-            <div className="sec-title">Meds Held</div>
-            {held.map((x) => (
-              <div key={x.id} style={{ fontSize: 15, padding: '3px 0', color: 'var(--red)' }}>⏸ {medName(x)} @ {fmtTime24(x.dose_time)} — {x.hold_reason} <span className="faint">{nameOf(x.created_by)}</span></div>
-            ))}
-          </div>
-        )}
-
-        {careKinds.map(({ kind, label }) => {
-          const items = day.care.filter((c) => c.kind === kind)
+        {dayView === 'grouped' && KIND_ORDER.map((kind) => {
+          const items = list.filter((e) => e.kind === kind)
           if (items.length === 0) return null
+          const total = kind === 'fluid' ? ` — ${items.reduce((sum, e) => sum + (e.num ?? 0), 0)} oz` : ` (${items.length})`
           return (
-            <div className="sec sec-gray" key={kind}>
-              <div className="sec-title">{label}</div>
-              {items.map((c) => (
-                <div key={c.id} style={{ fontSize: 15, padding: '3px 0' }}>{c.detail} <span className="faint">{fmtClock(c.created_at)} · {nameOf(c.created_by)}</span></div>
-              ))}
+            <div className={`sec sec-${KIND[kind].tone}`} key={kind}>
+              <div className="sec-title">{KIND[kind].icon} {KIND[kind].group}{total}</div>
+              {items.map((e) => row(e, false))}
             </div>
           )
         })}
-
-        {day.pt.length > 0 && (
-          <div className="sec sec-green">
-            <div className="sec-title">🏋️ Physical Therapy</div>
-            {day.pt.map((p) => (
-              <div key={p.id} style={{ fontSize: 15, padding: '3px 0' }}>
-                {exName(p)}: {
-                  exUnit(p) === 'sets_reps' ? `${p.sets} × ${p.reps}` :
-                  exUnit(p) === 'minutes' ? `${p.reps} min` :
-                  exUnit(p) === 'feet' ? `${p.reps} ft` : `${p.reps}`
-                } <span className="faint">{nameOf(p.created_by)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {day.notes.length > 0 && (
-          <div className="sec sec-purple">
-            <div className="sec-title">Notes</div>
-            {day.notes.map((n) => (
-              <div key={n.id} style={{ fontSize: 15, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
-                {n.note} <span className="faint">— {nameOf(n.author_email)}, {fmtClock(n.created_at)}</span>
-              </div>
-            ))}
-          </div>
-        )}
+        {toast.node}
       </>
     )
   }
 
+  // ================= list / search =================
+  const grouped: { date: string; items: Entry[] }[] = []
+  matches.slice(0, shown).forEach((e) => {
+    const last = grouped[grouped.length - 1]
+    if (last && last.date === e.date) last.items.push(e)
+    else grouped.push({ date: e.date, items: [e] })
+  })
+
   return (
     <>
-      {days.length === 0 && <p className="muted center" style={{ marginTop: 40 }}>No history yet.</p>}
-      {days.map((d) => (
-        <div className="card hist-card" key={d} onClick={() => setSelected(d)}>
-          <div style={{ fontWeight: 'bold', marginBottom: 6 }}>{fmtDateFull(d)}</div>
-          <div className="chips">
-            {(summaries[d] ?? []).map((t) => <span className="tag" key={t}>{t}</span>)}
+      <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} enterKeyHint="search"
+        placeholder="Search history — nausea, fall, a med, a food…" aria-label="Search history" />
+
+      <div className="filterbar" role="group" aria-label="Show only">
+        {FILTERS.map((x) => (
+          <button key={x.id} className={`chip ${filter === x.id ? 'on' : ''}`} onClick={() => setFilter(x.id)}>{x.label}</button>
+        ))}
+      </div>
+
+      <div className="row" style={{ marginBottom: 10 }}>
+        <select aria-label="Time range" value={rangeDays} onChange={(e) => setRangeDays(Number(e.target.value))}>
+          {RANGES.map((r) => <option key={r.days} value={r.days}>{r.days ? `Last ${r.label}` : r.label}</option>)}
+        </select>
+        <select aria-label="Logged by" value={person} onChange={(e) => setPerson(e.target.value)}>
+          <option value="">Everyone</option>
+          {family.map((m) => <option key={m.email} value={m.email.toLowerCase()}>{m.display_name}</option>)}
+        </select>
+      </div>
+
+      <div className="row" style={{ marginBottom: 14 }}>
+        <label htmlFor="hist-jump" style={{ margin: 0, flexShrink: 0 }}>Jump to a date</label>
+        <input id="hist-jump" type="date" max={today} value="" onChange={(e) => pickDate(e.target.value)} />
+      </div>
+
+      {loading && <p className="muted center" style={{ marginTop: 30 }}>Loading history…</p>}
+
+      {!loading && searching && (
+        <>
+          <div className="row between" style={{ marginBottom: 6 }}>
+            <span className="muted">
+              {matches.length} {matches.length === 1 ? 'entry' : 'entries'} on {new Set(matches.map((e) => e.date)).size} days
+            </span>
+            <button className="ghost" onClick={() => { setQuery(''); setFilter('all'); setPerson('') }}>Clear</button>
           </div>
+          {matches.length === 0 && (
+            <p className="muted center" style={{ marginTop: 20 }}>
+              Nothing matches{rangeDays ? ` in the last ${rangeDays} days. Try “All time”.` : '.'}
+            </p>
+          )}
+          {grouped.map(({ date, items }) => (
+            <div key={date}>
+              <button className="tl-date" onClick={() => setSelected(date)}>{fmtDateFull(date)} ›</button>
+              <div className="card" style={{ padding: '4px 14px' }}>
+                {items.map((e) => row(e))}
+              </div>
+            </div>
+          ))}
+          {matches.length > shown && (
+            <button className="secondary" style={{ width: '100%' }} onClick={() => setShown(shown + PAGE)}>
+              Show more ({matches.length - shown} left)
+            </button>
+          )}
+        </>
+      )}
+
+      {!loading && !searching && (
+        <>
+          {days.length === 0 && <p className="muted center" style={{ marginTop: 30 }}>No history in this range.</p>}
+          {days.map((d) => (
+            <button className="card hist-day" key={d} onClick={() => setSelected(d)}>
+              <div className="hd-date">
+                <span>{fmtDateFull(d)}{d === today ? ' · Today' : ''}</span>
+                <span className="faint" style={{ fontWeight: 400 }}>{byDay[d].length} ›</span>
+              </div>
+              <DaySummary list={byDay[d]} date={d} today={today} />
+            </button>
+          ))}
+          {rangeDays > 0 && (
+            <button className="secondary" style={{ width: '100%' }}
+              onClick={() => setRangeDays(rangeDays < 30 ? 30 : rangeDays < 90 ? 90 : 0)}>
+              Load older days
+            </button>
+          )}
+        </>
+      )}
+      {toast.node}
+    </>
+  )
+}
+
+// The plain-words line and red flags for one day.
+function DaySummary({ list, date, today }: { list: Entry[]; date: string; today: string }) {
+  const of = (...kinds: Kind[]) => list.filter((e) => kinds.includes(e.kind))
+  const bp = of('vital').filter((e) => e.sub === 'bp').pop()
+  const oz = of('fluid').reduce((sum, e) => sum + (e.num ?? 0), 0)
+  const meals = of('meal')
+  const pcts = meals.map((e) => e.num).filter((n): n is number => n !== undefined)
+  const given = of('given').length
+  const held = list.filter((e) => e.kind === 'held' || (e.kind === 'powder' && e.bad)).length
+  const bms = of('bm').length
+  const pt = of('pt').length
+  const symptoms = [...new Set(of('symptom').map((e) => e.sub ?? e.text))]
+  const urinary = of('urine_symptom').length
+
+  const parts: ReactNode[] = []
+  if (bp) parts.push(bp.text.replace('Blood pressure', 'BP'))
+  if (of('fluid').length) parts.push(`${oz} oz fluids`)
+  if (meals.length) parts.push(`${meals.length} meal${meals.length === 1 ? '' : 's'}${pcts.length ? ` (${Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length)}% eaten)` : ''}`)
+  if (given) parts.push(`${given} med${given === 1 ? "" : "s"} given`)
+  if (bms) parts.push(`${bms} BM`)
+  if (pt) parts.push(`${pt} PT`)
+  const lowFluids = date !== today && of('fluid').length > 0 && oz < LOW_FLUID_OZ
+
+  return (
+    <>
+      {parts.length > 0 && <div className="hd-line">{parts.map((p, i) => <span key={i}>{i > 0 && ' · '}{p}</span>)}</div>}
+      {(symptoms.length > 0 || held > 0 || urinary > 0 || lowFluids) && (
+        <div className="flags">
+          {symptoms.map((s) => <span className="flag" key={s}>{s}</span>)}
+          {urinary > 0 && <span className="flag">{urinary} urinary symptom{urinary === 1 ? '' : 's'}</span>}
+          {held > 0 && <span className="flag">{held} held / skipped</span>}
+          {lowFluids && <span className="flag amber">Low fluids</span>}
         </div>
-      ))}
+      )}
     </>
   )
 }

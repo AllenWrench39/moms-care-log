@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { confirmDialog } from '../confirm'
-import { supabase, todayStr, fmtClock, fmtDateFull, stamp, nowHHMM, weekBounds, CareEvent, PtExercise, PtLog } from '../supabase'
+import { supabase, todayStr, fmtClock, fmtDateFull, stamp, nowHHMM, CareEvent } from '../supabase'
 import { useToast } from '../toast'
 import DayNav, { shiftDay } from '../DayNav'
 import UtiWatch, { URINE_FLAGS } from '../UtiWatch'
@@ -24,41 +24,14 @@ const DAMPNESS = ['Dry', 'Damp', 'Wet', 'Soaked']
 const PAMPER_EXTRA = ['Poop', 'Wet + Poop']
 const PAMPER_SMEAR = 'Smear (from wiping)'
 // She usually sleeps in her chair, so only nights in bed get logged.
-const HYGIENE_ITEMS = ['Bed Bath', 'Shower', 'Hair Wash', 'Nail Care', 'Oral Care', 'Skin Care', 'Pad Change', 'Repositioned', 'Slept in Bed']
+const HYGIENE_ITEMS = ['Bed Bath', 'Shower', 'Hair Wash', 'Nail Care', 'Oral Care', 'Skin Care', 'Pad Change', 'Repositioned', 'Slept in Bed', 'Foot Rub']
+// Foot rubs ask how long, saved as e.g. "Foot Rub · 5 min".
+const FOOT_RUB = 'Foot Rub'
+const FOOT_RUB_MINUTES = [1, 3, 5, 10]
 const CLEANING_ITEMS = ['Bed Linens', 'Room Clean', 'Bathroom', 'Laundry', 'Trash', 'Floor Mop', 'Dishes', 'Supply Restock']
 // "Bathroom" covered anything from a sink wipe to a full clean, so the log could
 // not say whether the floor had been mopped. Tapping it now asks what was done.
 const BATHROOM_PARTS = ['Toilet', 'Sink', 'Shower', 'Floor mopped', 'Shelves', 'Mirror', 'Trash', 'Other']
-
-const UNIT_OPTIONS: { value: PtExercise['unit']; label: string }[] = [
-  { value: 'sets_reps', label: 'Sets × Reps' },
-  { value: 'minutes',   label: 'Time (minutes)' },
-  { value: 'feet',      label: 'Distance (feet)' },
-  { value: 'custom',    label: 'Custom amount' },
-]
-
-function unitLabel(ex: PtExercise): string {
-  if (ex.unit === 'minutes') return 'min'
-  if (ex.unit === 'feet') return 'ft'
-  if (ex.unit === 'custom') return 'amount'
-  return 'reps'
-}
-
-function logDisplay(ex: PtExercise, p: PtLog): string {
-  if (ex.unit === 'sets_reps') return `✓ ${p.sets} × ${p.reps}`
-  if (ex.unit === 'minutes') return `✓ ${p.reps} min`
-  if (ex.unit === 'feet') return `✓ ${p.reps} ft`
-  return `✓ ${p.reps}`
-}
-
-const BLANK_FORM = {
-  name: '', unit: 'sets_reps' as PtExercise['unit'],
-  target_sets: '1', target_reps: '10', weekly_goal: '20',
-}
-
-function unitShort(ex: PtExercise) {
-  return ex.unit === 'minutes' ? 'min' : ex.unit === 'feet' ? 'ft' : 'reps'
-}
 
 export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) {
   const today = todayStr()
@@ -70,36 +43,22 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
   const resetTime = () => { setTimeRaw(nowHHMM()); setTimeEdited(false) }
   const isToday = date === today
   const [events, setEvents] = useState<CareEvent[]>([])
-  const [exercises, setExercises] = useState<PtExercise[]>([])
-  const [ptLogs, setPtLogs] = useState<PtLog[]>([])
-  const [weekLogs, setWeekLogs] = useState<PtLog[]>([])
   const [bmWeek, setBmWeek] = useState(0)
   const [urineFlags, setUrineFlags] = useState<string[]>([])
   const [padTarget, setPadTarget] = useState<string | null>(null)
   const [bathParts, setBathParts] = useState<string[] | null>(null)
   const [bmSize, setBmSize] = useState('Medium')
   const [bmType, setBmType] = useState('Normal')
-  const [ptInput, setPtInput] = useState<Record<string, { sets: string; reps: string }>>({})
-  const [manageEx, setManageEx] = useState(false)
-  const [exForm, setExForm] = useState(BLANK_FORM)
-  const [editingEx, setEditingEx] = useState<PtExercise | null>(null)
+  const [footRub, setFootRub] = useState(false)
 
   async function load() {
-    const [e, x, p, wk, bm] = await Promise.all([
+    const [e, bm] = await Promise.all([
       supabase.from('care_events').select('*').eq('event_date', date).order('created_at'),
-      supabase.from('pt_exercises').select('*').eq('active', true).order('name'),
-      supabase.from('pt_logs').select('*').eq('log_date', date),
-      // Whole week around the day being viewed, for the goal countdowns.
-      supabase.from('pt_logs').select('*')
-        .gte('log_date', weekBounds(date).start).lte('log_date', weekBounds(date).end),
       // Rolling 7 days ending on the day being viewed, this day included.
       supabase.from('care_events').select('id', { count: 'exact', head: true })
         .eq('kind', 'bm').gte('event_date', shiftDay(date, -6)).lte('event_date', date),
     ])
     setEvents(e.data ?? [])
-    setExercises(x.data ?? [])
-    setPtLogs(p.data ?? [])
-    setWeekLogs(wk.data ?? [])
     setBmWeek(bm.count ?? 0)
   }
 
@@ -146,58 +105,9 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
     load()
   }
 
-  async function logPt(ex: PtExercise) {
-    const input = ptInput[ex.id] ?? { sets: String(ex.target_sets ?? 1), reps: String(ex.target_reps ?? 10) }
-    const snapshot = { exercise_name: ex.name, exercise_unit: ex.unit }
-    if (ex.unit === 'sets_reps') {
-      const sets = parseInt(input.sets), reps = parseInt(input.reps)
-      if (!sets || !reps) return
-      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: date, sets, reps, ...snapshot, ...stamp(date, time, timeEdited) })
-    } else {
-      const val = parseInt(input.reps)
-      if (!val) return
-      await supabase.from('pt_logs').insert({ exercise_id: ex.id, log_date: date, sets: 1, reps: val, ...snapshot, ...stamp(date, time, timeEdited) })
-    }
-    toast.show('PT logged ✓')
-    load()
-  }
-
-  async function saveExercise() {
-    if (!exForm.name.trim()) return
-    const payload = {
-      name: exForm.name.trim(),
-      unit: exForm.unit,
-      target_sets: parseInt(exForm.target_sets) || 1,
-      target_reps: parseInt(exForm.target_reps) || 10,
-      weekly_goal: parseInt(exForm.weekly_goal) || 0,
-      active: true,
-    }
-    if (editingEx) {
-      await supabase.from('pt_exercises').update(payload).eq('id', editingEx.id)
-    } else {
-      await supabase.from('pt_exercises').insert(payload)
-    }
-    setExForm(BLANK_FORM)
-    setEditingEx(null)
-    toast.show('Exercise saved ✓')
-    load()
-  }
-
-  function startEditEx(ex: PtExercise) {
-    setEditingEx(ex)
-    setExForm({
-      name: ex.name,
-      unit: ex.unit,
-      target_sets: String(ex.target_sets ?? 1),
-      target_reps: String(ex.target_reps ?? 10),
-      weekly_goal: String(ex.weekly_goal ?? 0),
-    })
-  }
-
-  async function removeEx(ex: PtExercise) {
-    if (!(await confirmDialog(`Remove "${ex.name}"? Past logs are kept.`))) return
-    await supabase.from('pt_exercises').update({ active: false }).eq('id', ex.id)
-    load()
+  async function logFootRub(minutes: number) {
+    await addEvent('hygiene', `${FOOT_RUB} · ${minutes} min`, `Foot rub ${minutes} min ✓`)
+    setFootRub(false)
   }
 
   const byKind = (kind: string) => events.filter((e) => e.kind === kind)
@@ -287,8 +197,11 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
         <div className="muted" style={{ marginBottom: 8 }}>Tap to log each task done.</div>
         <div className="chips">
           {HYGIENE_ITEMS.map((h) => (
-            <button key={h} className={`chip ${byKind('hygiene').some((e) => e.detail === h) ? 'on-blue' : ''}`}
-              onClick={() => addEvent('hygiene', h, h + ' ✓')}>{h}</button>
+            <button key={h}
+              className={`chip ${byKind('hygiene').some((e) => e.detail === h || e.detail.startsWith(h + ' ·')) ? 'on-blue' : ''}`}
+              onClick={() => h === FOOT_RUB ? setFootRub(true) : addEvent('hygiene', h, h + ' ✓')}>
+              {h}{h === FOOT_RUB ? ' …' : ''}
+            </button>
           ))}
         </div>
         <EventList kind="hygiene" />
@@ -308,138 +221,20 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
         <EventList kind="cleaning" />
       </div>
 
-      <div className="sec sec-green">
-        <div className="sec-title">🏋️ Physical Therapy</div>
-        {exercises.map((ex) => {
-          const done = ptLogs.filter((p) => p.exercise_id === ex.id)
-          const input = ptInput[ex.id] ?? { sets: String(ex.target_sets ?? 1), reps: String(ex.target_reps ?? 10) }
-          return (
-            <div key={ex.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
-              <div>
-                <b style={{ fontSize: 14 }}>{ex.name}</b>
-                <span className="faint" style={{ marginLeft: 8 }}>
-                  {ex.unit === 'sets_reps' && `Per round: ${ex.target_sets} × ${ex.target_reps}`}
-                  {ex.unit === 'minutes' && `Per round: ${ex.target_reps} min`}
-                  {ex.unit === 'feet' && `Per round: ${ex.target_reps} ft`}
-                  {ex.unit === 'custom' && ex.target_reps ? `Per round: ${ex.target_reps}` : ''}
-                </span>
-              </div>
-              {ex.weekly_goal > 0 && (() => {
-                const soFar = weekLogs.filter((p) => p.exercise_id === ex.id)
-                  .reduce((sum, p) => sum + Number(p.reps || 0), 0)
-                const left = ex.weekly_goal - soFar
-                const pct = Math.min(100, (soFar / ex.weekly_goal) * 100)
-                return (
-                  <div style={{ marginTop: 4 }}>
-                    <div className="progress" style={{ marginBottom: 3 }}>
-                      <div style={{ width: `${pct}%`, background: left <= 0 ? 'var(--green)' : undefined }} />
-                    </div>
-                    <div style={{ color: 'var(--ink)', fontSize: '0.88rem' }}>
-                      This week <b>{soFar}</b> of {ex.weekly_goal} {unitShort(ex)} ·{' '}
-                      {left > 0
-                        ? <b>{left} {unitShort(ex)} to go</b>
-                        : <b style={{ color: 'var(--green)' }}>✓ goal met{left < 0 ? ` — ${-left} over` : ''}</b>}
-                    </div>
-                  </div>
-                )
-              })()}
-              <div className="row" style={{ marginTop: 6 }}>
-                {ex.unit === 'sets_reps' ? (
-                  <>
-                    <input style={{ width: 64 }} type="number" value={input.sets}
-                      onChange={(e) => setPtInput({ ...ptInput, [ex.id]: { ...input, sets: e.target.value } })} />
-                    <span className="muted">sets ×</span>
-                    <input style={{ width: 64 }} type="number" value={input.reps}
-                      onChange={(e) => setPtInput({ ...ptInput, [ex.id]: { ...input, reps: e.target.value } })} />
-                    <span className="muted">reps</span>
-                  </>
-                ) : (
-                  <>
-                    <input style={{ width: 80 }} type="number" placeholder="0" value={input.reps}
-                      onChange={(e) => setPtInput({ ...ptInput, [ex.id]: { ...input, reps: e.target.value } })} />
-                    <span className="muted">{unitLabel(ex)}</span>
-                  </>
-                )}
-                <button style={{ padding: '8px 12px', fontSize: 15 }} onClick={() => logPt(ex)}>Log</button>
-              </div>
-              {done.map((p) => (
-                <div className="feed-item" key={p.id}>
-                  <span style={{ color: 'var(--green)' }}>
-                    {logDisplay(ex, p)}
-                    {' '}<span className="faint">{fmtClock(p.created_at)} · {nameOf(p.created_by)}</span>
-                  </span>
-                  <button className="danger" aria-label="Remove" onClick={() => del('pt_logs', p.id)}>✕</button>
-                </div>
+      {footRub && (
+        <div className="modal-back" onClick={() => setFootRub(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 'bold', fontSize: 18, marginBottom: 4 }}>Foot rub</div>
+            <div className="muted" style={{ marginBottom: 12 }}>How long?</div>
+            <div className="chips" style={{ marginBottom: 14 }}>
+              {FOOT_RUB_MINUTES.map((m) => (
+                <button key={m} className="chip" onClick={() => logFootRub(m)}>{m} min</button>
               ))}
             </div>
-          )
-        })}
-
-        <div style={{ marginTop: 14 }}>
-          <button className="ghost" onClick={() => { setManageEx(!manageEx); setEditingEx(null); setExForm(BLANK_FORM) }}>
-            {manageEx ? '▲ Hide exercise editor' : '▼ Edit exercises'}
-          </button>
-        </div>
-
-        {manageEx && (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ marginBottom: 10 }}>
-              <label>Exercise name</label>
-              <input value={exForm.name} onChange={(e) => setExForm({ ...exForm, name: e.target.value })} placeholder="e.g. Heel Raises" />
-              <label>Type</label>
-              <div className="chips" style={{ marginBottom: 8 }}>
-                {UNIT_OPTIONS.map((o) => (
-                  <button key={o.value} className={`chip ${exForm.unit === o.value ? 'on' : ''}`}
-                    onClick={() => setExForm({ ...exForm, unit: o.value })}>{o.label}</button>
-                ))}
-              </div>
-              {exForm.unit === 'sets_reps' && (
-                <div className="row" style={{ gap: 8, marginBottom: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <label>Target sets</label>
-                    <input type="number" value={exForm.target_sets} onChange={(e) => setExForm({ ...exForm, target_sets: e.target.value })} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label>Target reps</label>
-                    <input type="number" value={exForm.target_reps} onChange={(e) => setExForm({ ...exForm, target_reps: e.target.value })} />
-                  </div>
-                </div>
-              )}
-              <div style={{ marginBottom: 8 }}>
-                <label>Weekly goal ({exForm.unit === 'minutes' ? 'minutes' : exForm.unit === 'feet' ? 'feet' : 'reps'} per week · 0 for none)</label>
-                <input inputMode="numeric" value={exForm.weekly_goal}
-                  onChange={(e) => setExForm({ ...exForm, weekly_goal: e.target.value.replace(/[^0-9]/g, '') })} />
-              </div>
-              {exForm.unit !== 'sets_reps' && (
-                <div style={{ marginBottom: 8 }}>
-                  <label>Target {exForm.unit === 'minutes' ? '(minutes)' : exForm.unit === 'feet' ? '(feet)' : '(amount)'}</label>
-                  <input type="number" value={exForm.target_reps} onChange={(e) => setExForm({ ...exForm, target_reps: e.target.value })} />
-                </div>
-              )}
-              <div className="row">
-                <button onClick={saveExercise}>{editingEx ? 'Save changes' : 'Add exercise'}</button>
-                <button className="secondary" onClick={() => { setEditingEx(null); setExForm(BLANK_FORM) }}>Clear</button>
-              </div>
-            </div>
-
-            {exercises.map((ex) => (
-              <div className="feed-item" key={ex.id}>
-                <div>
-                  <b>{ex.name}</b>
-                  <div className="faint">
-                    {UNIT_OPTIONS.find((o) => o.value === ex.unit)?.label ?? ex.unit}
-                    {ex.weekly_goal > 0 ? ` · goal ${ex.weekly_goal} ${unitShort(ex)}/week` : ''}
-                  </div>
-                </div>
-                <div className="row" style={{ flexShrink: 0 }}>
-                  <button className="secondary" style={{ padding: '5px 9px', fontSize: 14 }} onClick={() => startEditEx(ex)}>Edit</button>
-                  <button className="danger" aria-label="Remove" onClick={() => removeEx(ex)}>✕</button>
-                </div>
-              </div>
-            ))}
+            <button className="secondary" style={{ width: '100%' }} onClick={() => setFootRub(false)}>Cancel</button>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {bathParts && (
         <div className="modal-back" onClick={() => setBathParts(null)}>
