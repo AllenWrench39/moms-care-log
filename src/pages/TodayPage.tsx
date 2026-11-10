@@ -420,7 +420,7 @@ export default function TodayPage({ nameOf, myEmail, onOpenMeds }: {
           ))}
         </div>
         <div className="chips" style={{ marginBottom: 9 }}>
-          {['4', '6', '8', '12', '16'].map((oz) => (
+          {['2', '4', '6', '8', '10', '12', '16', '20'].map((oz) => (
             <button key={oz} className="chip" onClick={() => addFluid(oz)}>+{oz} oz</button>
           ))}
         </div>
