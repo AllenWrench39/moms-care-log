@@ -326,8 +326,7 @@ export default function TodayPage({ nameOf, myEmail, onOpenMeds }: {
 
       {newNotes.length > 0 && (
         <button className="note-alert" onClick={() => { markNotesSeen(); jump('notes') }}>
-          <span>📝 {newNotes.length} new note{newNotes.length === 1 ? '' : 's'} today
-            {newNotes.length === 1 ? ` from ${nameOf(newNotes[0].author_email)}` : ''}</span>
+          <span>📝 {newNotes.length} new note{newNotes.length === 1 ? '' : 's'} today</span>
           <span aria-hidden="true">Read ›</span>
         </button>
       )}
