@@ -8,6 +8,7 @@ import PillFillCard from '../PillFill'
 import PrnMeds from '../PrnMeds'
 
 const POWDER_AMOUNTS = ['½ tsp', '1 tsp', '2 tsp', '½ tbsp', '1 tbsp', '2 tbsp']
+export const POWDER_SKIPPED = 'Skipped'
 const POWDER_ITEMS = ['Fiber', 'MiraLAX', 'D-Mannose'] as const
 type PowderItem = typeof POWDER_ITEMS[number]
 // MiraLAX and fiber depend on her BMs; D-mannose (bladder) is every day.
@@ -65,6 +66,14 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
     await supabase.from('powder_logs').insert({ item, amount, log_date: date, ...stamp(date, givenAt, timeEdited) })
     toast.show(`${item} ${amount} logged ✓`)
     setPowderPicker(null)
+    load()
+  }
+
+  // A skip is stored as a powder log with this amount, so the day shows a
+  // decision was made instead of looking like it was forgotten.
+  async function skipPowder(item: PowderItem) {
+    await supabase.from('powder_logs').insert({ item, amount: POWDER_SKIPPED, log_date: date, ...stamp(date, givenAt, timeEdited) })
+    toast.show(`${item} skipped`)
     load()
   }
 
@@ -211,14 +220,18 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
                   <b className="med-name">
                     {item}
                     {DAILY_POWDERS.includes(item) && !powderLogs.some((p) => p.item === item) && (
-                      <span className="badge" style={{ marginLeft: 6 }}>Daily — not given yet</span>
+                      <span className="badge" style={{ marginLeft: 6 }}>Daily — not logged yet</span>
                     )}
                   </b>
-                  <button className="btn-give" onClick={() => setPowderPicker(item)}>Log dose</button>
+                  <div className="row" style={{ flexShrink: 0 }}>
+                    <button className="btn-give" onClick={() => setPowderPicker(item)}>Log dose</button>
+                    <button className="btn-hold" onClick={() => skipPowder(item)}>Skip</button>
+                  </div>
                 </div>
                 {powderLogs.filter((p) => p.item === item).map((p) => (
                   <div className="feed-item" key={p.id}>
-                    <span style={{ color: 'var(--green)' }}>✓ {p.amount} <span className="faint">{fmtClock(p.created_at)} · {nameOf(p.created_by)}</span></span>
+                    <span style={{ color: p.amount === POWDER_SKIPPED ? 'var(--red)' : 'var(--green)' }}>
+                      {p.amount === POWDER_SKIPPED ? '⏸ Skipped' : `✓ ${p.amount}`} <span className="faint">{fmtClock(p.created_at)} · {nameOf(p.created_by)}</span></span>
                     <button className="danger" aria-label="Remove" onClick={() => delPowder(p.id)}>✕</button>
                   </div>
                 ))}
