@@ -494,3 +494,21 @@ label { font-size: 14px; font-weight: 600; color: var(--muted); display: block; 
 .tl-time { font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 2px; }
 .tl-item.bad .tl-text { color: var(--red); }
 .tl-item mark { background: var(--amber-soft); color: var(--amber-ink); border-radius: 3px; padding: 0 2px; }
+
+/* ---- "New note today" line (Today tab) ---- */
+.note-alert {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  background: var(--sec-purple);
+  color: var(--ink);
+  border: 1.5px solid var(--accent);
+  border-radius: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  font-size: 16px;
+}
+.note-alert span:last-child { color: var(--accent); white-space: nowrap; }
