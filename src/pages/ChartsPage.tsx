@@ -102,16 +102,16 @@ export default function ChartsPage() {
       <div className="sec sec-green">
         <div className="sec-title">🩺 Blood Pressure — last 30 days</div>
         {avgSys != null && (
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+          <div className="muted" style={{ fontSize: 14, marginBottom: 4 }}>
             30-day avg: <b>{avgSys}{avgDia != null ? `/${avgDia}` : ''}</b>
           </div>
         )}
         {bpData.length < 2 ? <NoData /> : (
           <ResponsiveContainer width="100%" height={190}>
             <LineChart data={bpData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0ece8" />
-              <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-              <YAxis domain={[50, 200]} tick={{ fontSize: 9 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="date" tick={{ fontSize: 13 }} />
+              <YAxis domain={[50, 200]} tick={{ fontSize: 13 }} />
               <Tooltip />
               <Legend />
               {avgSys != null && <ReferenceLine y={avgSys} stroke="#d9534f" strokeDasharray="4 4" strokeOpacity={0.6} />}
@@ -126,16 +126,16 @@ export default function ChartsPage() {
       <div className="sec sec-orange">
         <div className="sec-title">🩸 Blood Sugar — last 30 days</div>
         {avgBs != null && (
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+          <div className="muted" style={{ fontSize: 14, marginBottom: 4 }}>
             30-day avg: <b>{avgBs} mg/dL</b>
           </div>
         )}
         {bsData.length < 2 ? <NoData /> : (
           <ResponsiveContainer width="100%" height={190}>
             <LineChart data={bsData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0e4d0" />
-              <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-              <YAxis domain={[50, 300]} tick={{ fontSize: 9 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="date" tick={{ fontSize: 13 }} />
+              <YAxis domain={[50, 300]} tick={{ fontSize: 13 }} />
               <Tooltip />
               {avgBs != null && <ReferenceLine y={avgBs} stroke="#c17b4a" strokeDasharray="4 4" strokeOpacity={0.6} />}
               <Line type="monotone" dataKey="bs" stroke="#c17b4a" dot={{ r: 3 }} name="Blood Sugar mg/dL" connectNulls />
@@ -147,7 +147,7 @@ export default function ChartsPage() {
       <div className="sec sec-orange">
         <div className="sec-title">💩 Bowel Movements — last 30 days</div>
         {bmTotal > 0 && (
-          <div style={{ fontSize: 13, color: 'var(--ink)', marginBottom: 6, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 15, color: 'var(--ink)', marginBottom: 6, lineHeight: 1.6 }}>
             <b>{bmAvg.toFixed(1)}</b> a day on average ({bmTotal} total)
             {' · '}longest gap <b style={{ color: longestGap >= 3 ? 'var(--red)' : undefined }}>
               {longestGap} {longestGap === 1 ? 'day' : 'days'}</b>
@@ -161,11 +161,11 @@ export default function ChartsPage() {
         {bmTotal === 0 ? <NoData /> : (
           <ResponsiveContainer width="100%" height={210}>
             <BarChart data={bmData} barCategoryGap={2}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0e4d0" vertical={false} />
-              <XAxis dataKey="date" tick={{ fontSize: 9 }} interval={4} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 9 }} width={22} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 13 }} interval={4} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 13 }} width={22} />
               <Tooltip />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Legend wrapperStyle={{ fontSize: 13 }} />
               <ReferenceLine y={bmAvg} stroke="#7a6a5a" strokeDasharray="4 4" strokeOpacity={0.7} />
               {bmTypesPresent.map((t, i) => (
                 <Bar key={t.key} dataKey={t.key} stackId="bm" fill={t.color}
@@ -184,9 +184,9 @@ export default function ChartsPage() {
         {fluidTypes.length === 0 ? <NoData /> : (
           <ResponsiveContainer width="100%" height={210}>
             <BarChart data={fluidData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#d0e0f0" />
-              <XAxis dataKey="date" tick={{ fontSize: 9 }} />
-              <YAxis tick={{ fontSize: 9 }} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="date" tick={{ fontSize: 13 }} />
+              <YAxis tick={{ fontSize: 13 }} />
               <Tooltip />
               <Legend />
               {fluidTypes.map((t, i) => (

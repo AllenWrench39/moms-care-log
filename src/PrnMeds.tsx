@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { confirmDialog } from './confirm'
 import { supabase, todayStr, fmtClock, fmtDateFull, stamp, weekBounds } from './supabase'
 import { useToast } from './toast'
 
@@ -138,7 +139,7 @@ export default function PrnMeds({ nameOf, time, timeEdited, date = todayStr() }:
   }
 
   async function endCourse(c: MedCourse) {
-    if (!confirm(c.total_doses === 0 ? `Stop ${c.name}? (past doses are kept)` : `End the ${c.name} course now?`)) return
+    if (!(await confirmDialog(c.total_doses === 0 ? `Stop ${c.name}? (past doses are kept)` : `End the ${c.name} course now?`))) return
     await supabase.from('med_courses').update({ completed: true }).eq('id', c.id)
     load()
   }
@@ -156,13 +157,13 @@ export default function PrnMeds({ nameOf, time, timeEdited, date = todayStr() }:
   }
 
   async function removePrnMed(m: PrnMed) {
-    if (!confirm(`Remove ${m.name} from the as-needed list? (past doses are kept)`)) return
+    if (!(await confirmDialog(`Remove ${m.name} from the as-needed list? (past doses are kept)`))) return
     await supabase.from('prn_meds').update({ active: false }).eq('id', m.id)
     load()
   }
 
   async function delLog(id: string) {
-    if (!confirm('Remove this?')) return
+    if (!(await confirmDialog('Remove this?'))) return
     await supabase.from('prn_logs').delete().eq('id', id)
     load()
   }
@@ -187,7 +188,7 @@ export default function PrnMeds({ nameOf, time, timeEdited, date = todayStr() }:
                 <div className="row between" style={{ alignItems: 'flex-start' }}>
                   <div>
                     <b style={{ fontSize: 15 }}>{c.name}{c.dose ? ` ${c.dose}` : ''}</b>
-                    <div className="muted" style={{ fontSize: 13 }}>
+                    <div className="muted" style={{ fontSize: 15 }}>
                       {ongoing
                         ? <>This week <b style={{ color: thisWeek >= goal ? 'var(--green)' : undefined }}>{thisWeek} of {goal}</b> · {everyText(c.interval_hours)} · ongoing ({given} given so far)</>
                         : <>Dose <b>{given} of {c.total_doses}</b> · {everyText(c.interval_hours)}</>}
@@ -249,7 +250,7 @@ export default function PrnMeds({ nameOf, time, timeEdited, date = todayStr() }:
                   <b>{l.name}</b> {l.dose}{l.reason ? ` — ${l.reason}` : ''}
                   <span className="faint"> {fmtClock(l.created_at)} · {nameOf(l.created_by)}</span>
                 </span>
-                <button className="danger" onClick={() => delLog(l.id)}>✕</button>
+                <button className="danger" aria-label="Remove" onClick={() => delLog(l.id)}>✕</button>
               </div>
             ))}
           </div>
@@ -303,7 +304,7 @@ export default function PrnMeds({ nameOf, time, timeEdited, date = todayStr() }:
                   <b>{m.name}</b>
                   <div className="faint">{m.dose_options.join(' · ') || 'no preset doses'}</div>
                 </div>
-                <button className="danger" onClick={() => removePrnMed(m)}>✕</button>
+                <button className="danger" aria-label="Remove" onClick={() => removePrnMed(m)}>✕</button>
               </div>
             ))}
             <label style={{ marginTop: 8 }}>Add an as-needed medicine</label>

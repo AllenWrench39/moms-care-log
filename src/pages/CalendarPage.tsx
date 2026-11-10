@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { confirmDialog } from '../confirm'
 import { supabase, Appointment, FamilyMember } from '../supabase'
 
 function fmtDate(iso: string) {
@@ -40,7 +41,7 @@ export default function CalendarPage({ family, nameOf }: { family: FamilyMember[
   }
 
   async function remove(id: string) {
-    if (!confirm('Delete this appointment?')) return
+    if (!(await confirmDialog('Delete this appointment?'))) return
     await supabase.from('appointments').delete().eq('id', id)
     load()
   }
@@ -61,7 +62,7 @@ export default function CalendarPage({ family, nameOf }: { family: FamilyMember[
           {a.driver_email && <div className="muted">🚗 {nameOf(a.driver_email)} is taking her</div>}
           {a.notes && <div className="muted">{a.notes}</div>}
         </div>
-        <button className="danger" onClick={() => remove(a.id)} aria-label="Delete">✕</button>
+        <button className="danger" aria-label="Remove" onClick={() => remove(a.id)} >✕</button>
       </div>
     </div>
   )

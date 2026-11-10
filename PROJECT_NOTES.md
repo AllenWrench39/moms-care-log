@@ -52,3 +52,17 @@ Supabase row-level security (RLS).
   tables are dropped (step 1a above).
 - User has Supabase and Vercel connectors added — a new session may be able
   to run the setup steps directly via those connectors.
+
+## Nov 2026 — reliability + redesign (branch `redesign-reliability`)
+- Saves: every write goes through `trackedFetch` in `src/supabase.ts`. A failed
+  write turns the next toast into "Not saved" and shows a red banner, so a
+  success toast can't appear for something that didn't save.
+- Offline: `public/sw.js` caches the app shell only (never data). Entries are
+  NOT queued offline — an offline banner says so.
+- Nav: bottom bar (Today, Meds, Care, Appts, More). Other tabs, view-only mode
+  and sign out are in the More sheet.
+- Design tokens + dark mode are in `src/styles.css`; use the CSS variables,
+  not hex colours, in new code.
+- `confirmDialog()` in `src/confirm.tsx` replaces the browser `confirm()`.
+- Optional, not yet applied: `supabase/2026-11-09-realtime-meals-symptoms.sql`
+  (live updates for meals and symptoms).

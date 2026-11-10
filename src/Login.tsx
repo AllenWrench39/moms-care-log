@@ -23,7 +23,7 @@ export default function Login() {
   return (
     <div className="login-wrap">
       <div className="card login-card">
-        <h2 className="center">💜 Mom's Care Log</h2>
+        <h2 className="center">Mom's Care Log</h2>
         {sent ? (
           <p className="success center">
             Check your email! We sent a sign-in link to <b>{email}</b>. Open it on this phone.

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { confirmDialog } from '../confirm'
 import { supabase, Task, FamilyMember } from '../supabase'
 
 function fmtDue(d: string) {
@@ -62,7 +63,7 @@ export default function TasksPage({ family, nameOf }: { family: FamilyMember[]; 
   }
 
   async function remove(id: string) {
-    if (!confirm('Delete this task?')) return
+    if (!(await confirmDialog('Delete this task?'))) return
     await supabase.from('tasks').delete().eq('id', id)
     load()
   }
@@ -83,7 +84,7 @@ export default function TasksPage({ family, nameOf }: { family: FamilyMember[]; 
           {t.done && t.done_by && <>· done by {nameOf(t.done_by)}</>}
         </div>
       </div>
-      <button className="danger" onClick={() => remove(t.id)} aria-label="Delete">✕</button>
+      <button className="danger" aria-label="Remove" onClick={() => remove(t.id)} >✕</button>
     </div>
   )
 
