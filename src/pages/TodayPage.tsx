@@ -76,6 +76,16 @@ function loadOpen(): Record<string, boolean> {
   try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}') } catch { return {} }
 }
 
+// Which of the day's notes this phone has already been shown, so the
+// "new note" line clears once it has been tapped. Kept per phone, per day.
+const SEEN_KEY = 'notes-seen'
+function loadSeen(date: string): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(SEEN_KEY) ?? '{}')
+    return v.date === date && Array.isArray(v.ids) ? v.ids : []
+  } catch { return [] }
+}
+
 // A section that folds down to a one-line summary. Whether it is open is
 // remembered on this phone, so each caregiver keeps the layout they use.
 function Section({ id, tone, title, summary, open, onToggle, children }: {
@@ -124,7 +134,17 @@ export default function TodayPage({ nameOf, myEmail, onOpenMeds }: {
       return next
     })
   }
-  const toggle = (id: SecId) => setOpen(id, !openSecs[id])
+  const [seenNotes, setSeenNotes] = useState<string[]>(() => loadSeen(todayStr()))
+  function markNotesSeen() {
+    if (!isToday) return
+    const ids = notes.map((n) => n.id)
+    setSeenNotes(ids)
+    try { localStorage.setItem(SEEN_KEY, JSON.stringify({ date, ids })) } catch { /* private mode */ }
+  }
+  const toggle = (id: SecId) => {
+    if (id === 'notes' && !openSecs.notes) markNotesSeen()
+    setOpen(id, !openSecs[id])
+  }
   // From a summary tile: open the section and bring it into view.
   function jump(id: SecId) {
     setOpen(id, true)
@@ -284,6 +304,11 @@ export default function TodayPage({ nameOf, myEmail, onOpenMeds }: {
   const lastVital = vitals.length ? vitals[vitals.length - 1] : null
   const vitalKinds = new Set(vitals.map((v) => v.kind)).size
 
+  // Today's notes from other caregivers that this phone has not opened yet.
+  const newNotes = isToday
+    ? notes.filter((n) => n.author_email?.toLowerCase() !== myEmail.toLowerCase() && !seenNotes.includes(n.id))
+    : []
+
   const hasDiarrhea = symptoms.some((s) => ['Diarrhea', 'Vomiting'].includes(s.symptom))
 
   return (
@@ -298,6 +323,13 @@ export default function TodayPage({ nameOf, myEmail, onOpenMeds }: {
       {isToday && <PillFillBanner />}
       {isToday && <ApptBanner nameOf={nameOf} />}
       {isToday && <PickupBanner />}
+
+      {newNotes.length > 0 && (
+        <button className="note-alert" onClick={() => { markNotesSeen(); jump('notes') }}>
+          <span>📝 {newNotes.length} new note{newNotes.length === 1 ? '' : 's'} today</span>
+          <span aria-hidden="true">Read ›</span>
+        </button>
+      )}
 
       <div className="tiles">
         <button className={`tile tile-wide ${dueNow.length ? 'alert' : 'good'}`} onClick={onOpenMeds}>
