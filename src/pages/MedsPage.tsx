@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { confirmDialog } from '../confirm'
 import { supabase, todayStr, fmtTime24, fmtClock, fmtDateFull, stamp, nowHHMM, Medication, MedDose, PowderLog } from '../supabase'
 import { DIARRHEA_WARNING } from './TodayPage'
 import { useToast } from '../toast'
@@ -16,7 +17,7 @@ const HOLD_REASONS = ['Refused', 'Nausea/Vomiting', 'Diarrhea', 'Low BP', 'Low B
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-function scheduledOn(med: Medication, date: string): boolean {
+export function scheduledOn(med: Medication, date: string): boolean {
   if (!med.scheduled_days || med.scheduled_days.length === 0) return true
   const dow = new Date(date + 'T12:00:00').getDay()
   return med.scheduled_days.includes(dow)
@@ -68,7 +69,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
   }
 
   async function delPowder(id: string) {
-    if (!confirm('Remove this?')) return
+    if (!(await confirmDialog('Remove this?'))) return
     await supabase.from('powder_logs').delete().eq('id', id)
     load()
   }
@@ -172,7 +173,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
   }
 
   async function removeMed(med: Medication) {
-    if (!confirm(`Remove ${med.name} from the schedule? (history is kept)`)) return
+    if (!(await confirmDialog(`Remove ${med.name} from the schedule? (history is kept)`))) return
     await supabase.from('medications').update({ active: false }).eq('id', med.id)
     load()
   }
@@ -218,7 +219,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
                 {powderLogs.filter((p) => p.item === item).map((p) => (
                   <div className="feed-item" key={p.id}>
                     <span style={{ color: 'var(--green)' }}>✓ {p.amount} <span className="faint">{fmtClock(p.created_at)} · {nameOf(p.created_by)}</span></span>
-                    <button className="danger" onClick={() => delPowder(p.id)}>✕</button>
+                    <button className="danger" aria-label="Remove" onClick={() => delPowder(p.id)}>✕</button>
                   </div>
                 ))}
               </div>
@@ -228,7 +229,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
           <div className="med-time-head row between">
             <span>🕐 {fmtTime24(time)}</span>
             {timeGroups[time].length > 2 && pendingCount > 0 && (
-              <button className="btn-give" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => giveAll(time)}>
+              <button className="btn-give" style={{ padding: '4px 10px', fontSize: 14 }} onClick={() => giveAll(time)}>
                 ✓ Give all ({pendingCount})
               </button>
             )}
@@ -244,7 +245,7 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
                 <div className="row between top">
                   <div className="grow">
                     <div className={`med-name ${given ? 'given' : ''} ${held ? 'held' : ''}`}>
-                      {med.name} {med.dose && <span style={{ fontWeight: 'normal', fontSize: 13 }}>{med.dose}</span>}
+                      {med.name} {med.dose && <span style={{ fontWeight: 'normal', fontSize: 15 }}>{med.dose}</span>}
                       {med.never_hold && <span className="badge" style={{ marginLeft: 5, background: 'var(--green-soft)', color: 'var(--green)' }}>DO NOT HOLD</span>}
                       {holdFlag && <span className="badge" style={{ marginLeft: 5, background: 'var(--amber-soft)', color: 'var(--amber-ink)' }}>⚠ HOLD TODAY?</span>}
                       {notToday && <span className="badge" style={{ marginLeft: 5, background: 'var(--border)', color: 'var(--muted)' }}>Not {isToday ? 'today' : 'this day'} — {fmtScheduledDays(med.scheduled_days!)}</span>}
@@ -325,8 +326,8 @@ export default function MedsPage({ nameOf }: { nameOf: (e: string) => string }) 
                 <div className="faint">{med.times.map(fmtTime24).join(' · ')}{med.notes ? ` — ${med.notes}` : ''}</div>
               </div>
               <div className="row" style={{ flexShrink: 0 }}>
-                <button className="secondary" style={{ padding: '5px 9px', fontSize: 12 }} onClick={() => startEdit(med)}>Edit</button>
-                <button className="danger" onClick={() => removeMed(med)}>✕</button>
+                <button className="secondary" style={{ padding: '5px 9px', fontSize: 14 }} onClick={() => startEdit(med)}>Edit</button>
+                <button className="danger" aria-label="Remove" onClick={() => removeMed(med)}>✕</button>
               </div>
             </div>
           ))}

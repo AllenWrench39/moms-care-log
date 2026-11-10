@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { confirmDialog } from '../confirm'
 import { supabase, CaregiverNote, NoteChange } from '../supabase'
 import { useToast } from '../toast'
 
@@ -40,7 +41,7 @@ export default function NotesPage({ nameOf, readOnly }: { nameOf: (e: string) =>
   }
 
   async function remove(note: CaregiverNote) {
-    if (!confirm('Remove this note?')) return
+    if (!(await confirmDialog('Remove this note?'))) return
     await supabase.from('caregiver_notes').delete().eq('id', note.id)
     await supabase.from('note_changes').insert({ action: 'Deleted', old_text: note.text })
     toast.show('Note removed')
@@ -55,7 +56,7 @@ export default function NotesPage({ nameOf, readOnly }: { nameOf: (e: string) =>
           Rules, reminders, and instructions for anyone caring for Mom.
         </div>
         {notes.map((n) => (
-          <div key={n.id} style={{ padding: '8px 0', borderBottom: '1px solid #f0e8dc' }}>
+          <div key={n.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
             {editId === n.id ? (
               <div>
                 <textarea value={editText} onChange={(e) => setEditText(e.target.value)} autoFocus />
@@ -66,11 +67,11 @@ export default function NotesPage({ nameOf, readOnly }: { nameOf: (e: string) =>
               </div>
             ) : (
               <div className="row between top">
-                <div style={{ fontSize: 13 }} className="grow">• {n.text}</div>
+                <div style={{ fontSize: 15 }} className="grow">• {n.text}</div>
                 {!readOnly && (
                   <div className="row" style={{ flexShrink: 0 }}>
-                    <button className="secondary" style={{ padding: '4px 9px', fontSize: 12 }} onClick={() => { setEditId(n.id); setEditText(n.text) }}>Edit</button>
-                    <button className="danger" onClick={() => remove(n)}>✕</button>
+                    <button className="secondary" style={{ padding: '4px 9px', fontSize: 14 }} onClick={() => { setEditId(n.id); setEditText(n.text) }}>Edit</button>
+                    <button className="danger" aria-label="Remove" onClick={() => remove(n)}>✕</button>
                   </div>
                 )}
               </div>
@@ -93,7 +94,7 @@ export default function NotesPage({ nameOf, readOnly }: { nameOf: (e: string) =>
           changes.length === 0
             ? <div className="muted" style={{ marginTop: 8 }}>No changes recorded yet.</div>
             : changes.map((c) => (
-                <div key={c.id} style={{ fontSize: 12, padding: '7px 0', borderBottom: '1px solid #e8e8e8' }}>
+                <div key={c.id} style={{ fontSize: 14, padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
                   <span className="tag">{c.action}</span>
                   {c.action === 'Edited' ? `"${c.old_text}" → "${c.new_text}"` : (c.new_text ?? c.old_text)}
                   <div className="faint">{new Date(c.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · {nameOf(c.created_by)}</div>

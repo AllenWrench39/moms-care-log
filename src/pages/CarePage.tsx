@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { confirmDialog } from '../confirm'
 import { supabase, todayStr, fmtClock, fmtDateFull, stamp, nowHHMM, weekBounds, CareEvent, PtExercise, PtLog } from '../supabase'
 import { useToast } from '../toast'
 import DayNav, { shiftDay } from '../DayNav'
@@ -140,7 +141,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
   }
 
   async function del(table: string, id: string) {
-    if (!confirm('Remove this?')) return
+    if (!(await confirmDialog('Remove this?'))) return
     await supabase.from(table).delete().eq('id', id)
     load()
   }
@@ -194,7 +195,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
   }
 
   async function removeEx(ex: PtExercise) {
-    if (!confirm(`Remove "${ex.name}"? Past logs are kept.`)) return
+    if (!(await confirmDialog(`Remove "${ex.name}"? Past logs are kept.`))) return
     await supabase.from('pt_exercises').update({ active: false }).eq('id', ex.id)
     load()
   }
@@ -206,7 +207,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
       {byKind(kind).map((e) => (
         <div className="feed-item" key={e.id}>
           <span>{e.detail} <span className="faint">{fmtClock(e.created_at)} · {nameOf(e.created_by)}</span></span>
-          <button className="danger" onClick={() => del('care_events', e.id)}>✕</button>
+          <button className="danger" aria-label="Remove" onClick={() => del('care_events', e.id)}>✕</button>
         </div>
       ))}
     </>
@@ -359,7 +360,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
                     <span className="muted">{unitLabel(ex)}</span>
                   </>
                 )}
-                <button style={{ padding: '8px 12px', fontSize: 13 }} onClick={() => logPt(ex)}>Log</button>
+                <button style={{ padding: '8px 12px', fontSize: 15 }} onClick={() => logPt(ex)}>Log</button>
               </div>
               {done.map((p) => (
                 <div className="feed-item" key={p.id}>
@@ -367,7 +368,7 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
                     {logDisplay(ex, p)}
                     {' '}<span className="faint">{fmtClock(p.created_at)} · {nameOf(p.created_by)}</span>
                   </span>
-                  <button className="danger" onClick={() => del('pt_logs', p.id)}>✕</button>
+                  <button className="danger" aria-label="Remove" onClick={() => del('pt_logs', p.id)}>✕</button>
                 </div>
               ))}
             </div>
@@ -431,8 +432,8 @@ export default function CarePage({ nameOf }: { nameOf: (e: string) => string }) 
                   </div>
                 </div>
                 <div className="row" style={{ flexShrink: 0 }}>
-                  <button className="secondary" style={{ padding: '5px 9px', fontSize: 12 }} onClick={() => startEditEx(ex)}>Edit</button>
-                  <button className="danger" onClick={() => removeEx(ex)}>✕</button>
+                  <button className="secondary" style={{ padding: '5px 9px', fontSize: 14 }} onClick={() => startEditEx(ex)}>Edit</button>
+                  <button className="danger" aria-label="Remove" onClick={() => removeEx(ex)}>✕</button>
                 </div>
               </div>
             ))}

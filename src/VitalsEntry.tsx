@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { confirmDialog } from './confirm'
 import { supabase, stamp } from './supabase'
 
 // Pain and mood were free text, so the log holds things like "4 legs and feet
@@ -90,7 +91,7 @@ export default function VitalsEntry({ date, time, timeEdited, onSaved, toast }: 
     if (rows.length === 0) { setOpen(false); reset(); return }
 
     const bad = outOfRange()
-    if (bad.length > 0 && !confirm(`That looks unusual — ${bad.join(', ')}. Save anyway?`)) return
+    if (bad.length > 0 && !(await confirmDialog(`That looks unusual — ${bad.join(', ')}. Save anyway?`))) return
 
     setBusy(true)
     await supabase.from('vital_readings').insert(

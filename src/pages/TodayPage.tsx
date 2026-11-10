@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { confirmDialog } from '../confirm'
 import {
   supabase, todayStr, fmtClock, fmtDateFull, stamp, dayStart, nowHHMM,
-  VitalReading, DaySymptom, Meal, Fluid, LogEntry,
+  fmtTime24, VitalReading, DaySymptom, Meal, Fluid, LogEntry, Medication, MedDose,
 } from '../supabase'
+import { scheduledOn } from './MedsPage'
 import { useToast } from '../toast'
 import DayNav, { shiftDay } from '../DayNav'
 import UtiWatch from '../UtiWatch'
@@ -67,7 +69,36 @@ const COUGH_LEVELS = ['Light', 'Medium', 'Heavy']
 const FLUID_TYPES = ['Water', 'Coffee', 'Tea', 'Juice', 'Lemon Water', 'Electrolytes', 'Soda', 'Milk', 'Broth', 'Other']
 const FLUID_GOAL_OZ = 64
 
-export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => string; myEmail: string }) {
+type SecId = 'vitals' | 'symptoms' | 'meals' | 'fluids' | 'notes'
+const OPEN_KEY = 'today-open-sections'
+
+function loadOpen(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}') } catch { return {} }
+}
+
+// A section that folds down to a one-line summary. Whether it is open is
+// remembered on this phone, so each caregiver keeps the layout they use.
+function Section({ id, tone, title, summary, open, onToggle, children }: {
+  id: SecId; tone: string; title: string; summary: string
+  open: boolean; onToggle: (id: SecId) => void; children: ReactNode
+}) {
+  return (
+    <div className={`sec sec-${tone} ${open ? 'open' : ''}`} id={`sec-${id}`}>
+      <button className="sec-head" aria-expanded={open} onClick={() => onToggle(id)}>
+        <span>{title}</span>
+        <span className="sec-sum">{summary}</span>
+        <span className="chev" aria-hidden="true">▶</span>
+      </button>
+      {open && children}
+    </div>
+  )
+}
+
+const mins = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + (m || 0) }
+
+export default function TodayPage({ nameOf, myEmail, onOpenMeds }: {
+  nameOf: (e: string) => string; myEmail: string; onOpenMeds: () => void
+}) {
   const today = todayStr()
   const toast = useToast()
   const [date, setDate] = useState(todayStr())
@@ -82,6 +113,23 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   const [meals, setMeals] = useState<Meal[]>([])
   const [fluids, setFluids] = useState<Fluid[]>([])
   const [notes, setNotes] = useState<LogEntry[]>([])
+  const [meds, setMeds] = useState<Medication[]>([])
+  const [doses, setDoses] = useState<MedDose[]>([])
+  const [openSecs, setOpenSecs] = useState<Record<string, boolean>>(loadOpen)
+
+  function setOpen(id: SecId, open: boolean) {
+    setOpenSecs((cur) => {
+      const next = { ...cur, [id]: open }
+      try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)) } catch { /* private mode */ }
+      return next
+    })
+  }
+  const toggle = (id: SecId) => setOpen(id, !openSecs[id])
+  // From a summary tile: open the section and bring it into view.
+  function jump(id: SecId) {
+    setOpen(id, true)
+    setTimeout(() => document.getElementById(`sec-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
 
   const [editingVital, setEditingVital] = useState<VitalReading | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -96,7 +144,7 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   const [symptomTime, setSymptomTime] = useState('')
 
   async function load() {
-    const [v, s, m, f, n] = await Promise.all([
+    const [v, s, m, f, n, md, ds] = await Promise.all([
       supabase.from('vital_readings').select('*').eq('reading_date', date).order('created_at'),
       supabase.from('day_symptoms').select('*').eq('sym_date', date),
       supabase.from('meals').select('*').eq('meal_date', date).order('created_at'),
@@ -104,12 +152,16 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
       supabase.from('log_entries').select('*')
         .gte('created_at', dayStart(date)).lt('created_at', dayStart(shiftDay(date, 1)))
         .order('created_at', { ascending: false }),
+      supabase.from('medications').select('*').eq('active', true),
+      supabase.from('med_doses').select('*').eq('dose_date', date),
     ])
     setVitals(v.data ?? [])
     setSymptoms(s.data ?? [])
     setMeals(m.data ?? [])
     setFluids(f.data ?? [])
     setNotes(n.data ?? [])
+    setMeds(md.data ?? [])
+    setDoses(ds.data ?? [])
   }
 
   useEffect(() => {
@@ -119,8 +171,15 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vital_readings' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fluids' }, load)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'log_entries' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'med_doses' }, load)
+      // These two only fire once the realtime migration in supabase/ is applied.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'meals' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'day_symptoms' }, load)
       .subscribe()
-    return () => { supabase.removeChannel(ch) }
+    // Catch up on anything logged by someone else while the phone was asleep.
+    const onShow = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', onShow)
+    return () => { supabase.removeChannel(ch); document.removeEventListener('visibilitychange', onShow) }
   }, [date])
 
 
@@ -138,7 +197,8 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
     const d = new Date(editingVital.created_at)
     const [hh, mm] = editTime.split(':').map(Number)
     if (!isNaN(hh) && !isNaN(mm)) d.setHours(hh, mm, 0, 0)
-    await supabase.from('vital_readings').update({ value, created_at: d.toISOString() }).eq('id', editingVital.id)
+    const { error } = await supabase.from('vital_readings').update({ value, created_at: d.toISOString() }).eq('id', editingVital.id)
+    if (error) { toast.show(''); return }
     setEditingVital(null)
     toast.show('Reading updated ✓')
     load()
@@ -154,7 +214,8 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
     const d = new Date(date + 'T12:00:00')
     const [hh, mm] = symptomTime.split(':').map(Number)
     if (!isNaN(hh) && !isNaN(mm)) d.setHours(hh, mm, 0, 0)
-    await supabase.from('day_symptoms').insert({ sym_date: date, symptom, created_at: d.toISOString() })
+    const { error } = await supabase.from('day_symptoms').insert({ sym_date: date, symptom, created_at: d.toISOString() })
+    if (error) { toast.show(''); return }
     toast.show(`${symptom} logged ✓`)
     load()
   }
@@ -170,11 +231,13 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
 
   async function saveMeal() {
     if (!mealModal || !mealModal.amount) return
-    await supabase.from('meals').insert({
+    const { error } = await supabase.from('meals').insert({
       meal_date: date, meal_type: mealModal.type, description: mealDesc.trim(),
       amount: amountText(mealModal.amount),
       ...stamp(date, time, timeEdited),
     })
+    // Keep what was typed so it can be saved again once there is signal.
+    if (error) { toast.show(''); return }
     setMealDesc(''); setMealModal(null)
     toast.show(`${mealModal.type} logged ✓`)
     load()
@@ -183,28 +246,44 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
   async function addFluid(oz: string) {
     const n = parseFloat(oz)
     if (!n || n <= 0) return
-    await supabase.from('fluids').insert({ fluid_date: date, fluid_type: fluidType, oz: n, ...stamp(date, time, timeEdited) })
+    const { error } = await supabase.from('fluids').insert({ fluid_date: date, fluid_type: fluidType, oz: n, ...stamp(date, time, timeEdited) })
+    if (error) { toast.show(''); return }
     toast.show(`${n} oz ${fluidType} ✓`)
     load()
   }
 
   async function addNote() {
     if (!newNote.trim()) return
-    await supabase.from('log_entries').insert({ note: newNote.trim(), ...stamp(date, time, timeEdited) })
+    const { error } = await supabase.from('log_entries').insert({ note: newNote.trim(), ...stamp(date, time, timeEdited) })
+    if (error) { toast.show(''); return }
     setNewNote('')
     toast.show('Note saved ✓')
     load()
   }
 
   async function del(table: string, id: string) {
-    if (!confirm('Remove this?')) return
-    await supabase.from(table).delete().eq('id', id)
+    if (!(await confirmDialog('Remove this?'))) return
+    const { error } = await supabase.from(table).delete().eq('id', id)
+    if (error) toast.show('')
     load()
   }
 
   const mealPcts = meals.map((m) => amountPct(m.amount)).filter((n): n is number => n !== null)
   const eatenAvg = mealPcts.length ? Math.round(mealPcts.reduce((a, b) => a + b, 0) / mealPcts.length) : null
   const totalOz = fluids.reduce((s, f) => s + Number(f.oz || 0), 0)
+  // Scheduled doses with nothing logged yet (given or held) for this day.
+  const nowMin = mins(nowHHMM())
+  const unlogged = meds
+    .filter((med) => scheduledOn(med, date))
+    .flatMap((med) => med.times.map((t) => ({ med, t })))
+    .filter(({ med, t }) => !doses.some((d) => d.medication_id === med.id && d.dose_time === t))
+  const dueNow = unlogged.filter(({ t }) => !isToday || mins(t) <= nowMin)
+  const nextTime = isToday
+    ? unlogged.map(({ t }) => t).filter((t) => mins(t) > nowMin).sort((a, b) => mins(a) - mins(b))[0]
+    : undefined
+  const lastVital = vitals.length ? vitals[vitals.length - 1] : null
+  const vitalKinds = new Set(vitals.map((v) => v.kind)).size
+
   const hasDiarrhea = symptoms.some((s) => ['Diarrhea', 'Vomiting'].includes(s.symptom))
 
   return (
@@ -220,8 +299,42 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
       {isToday && <ApptBanner nameOf={nameOf} />}
       {isToday && <PickupBanner />}
 
-      <div className="sec sec-green">
-        <div className="sec-title">📊 Vitals</div>
+      <div className="tiles">
+        <button className={`tile tile-wide ${dueNow.length ? 'alert' : 'good'}`} onClick={onOpenMeds}>
+          <span>
+            <span className="tile-label">💊 Scheduled meds</span><br />
+            <span className="tile-value">
+              {dueNow.length
+                ? `${dueNow.length} ${isToday ? 'due now' : 'not logged'}`
+                : meds.length ? 'All logged so far ✓' : '—'}
+            </span>
+          </span>
+          <span className="tile-sub">{nextTime ? `Next at ${fmtTime24(nextTime)} ›` : 'Open Meds ›'}</span>
+        </button>
+        <button className="tile" onClick={() => jump('fluids')}>
+          <span className="tile-label">💧 Fluids</span>
+          <span className="tile-value">{totalOz} oz</span>
+          <span className="tile-sub">of {FLUID_GOAL_OZ} oz goal</span>
+        </button>
+        <button className="tile" onClick={() => jump('meals')}>
+          <span className="tile-label">🍽 Meals</span>
+          <span className="tile-value">{meals.length || 'None'}</span>
+          <span className="tile-sub">{eatenAvg !== null ? `ate ${eatenAvg}% on average` : 'tap to log'}</span>
+        </button>
+        <button className="tile" onClick={() => jump('vitals')}>
+          <span className="tile-label">📊 Vitals</span>
+          <span className="tile-value">{vitalKinds ? `${vitalKinds} taken` : 'None'}</span>
+          <span className="tile-sub">{lastVital ? `last at ${fmtClock(lastVital.created_at)}` : 'tap to log'}</span>
+        </button>
+        <button className={`tile ${symptoms.length ? 'alert' : ''}`} onClick={() => jump('symptoms')}>
+          <span className="tile-label">⚠️ Symptoms</span>
+          <span className="tile-value">{symptoms.length || 'None'}</span>
+          <span className="tile-sub">{symptoms.length ? symptoms[symptoms.length - 1].symptom : 'tap to log'}</span>
+        </button>
+      </div>
+
+      <Section id="vitals" tone="green" title="📊 Vitals" open={!!openSecs.vitals} onToggle={toggle}
+        summary={vitals.length ? `${vitals.length} reading${vitals.length === 1 ? '' : 's'}` : 'none yet'}>
         <VitalsEntry date={date} time={time} timeEdited={timeEdited}
           onSaved={load} toast={toast.show} />
         <div className="faint" style={{ marginTop: 7 }}>
@@ -249,25 +362,25 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
                     <span className="faint"> {fmtClock(v.created_at)} · {nameOf(v.created_by)}</span>
                   </div>
                   <div className="row" style={{ flexShrink: 0 }}>
-                    <button className="secondary" style={{ padding: '5px 9px', fontSize: 12 }} onClick={() => startEditVital(v)}>Edit</button>
-                    <button className="danger" onClick={() => del('vital_readings', v.id)}>✕</button>
+                    <button className="secondary" style={{ padding: '5px 9px', fontSize: 14 }} onClick={() => startEditVital(v)}>Edit</button>
+                    <button className="danger" aria-label="Remove" onClick={() => del('vital_readings', v.id)}>✕</button>
                   </div>
                 </div>
               )
             )}
           </div>
         )}
-      </div>
+      </Section>
 
-      <div className="sec sec-red">
-        <div className="sec-title">⚠️ Symptoms</div>
+      <Section id="symptoms" tone="red" title="⚠️ Symptoms" open={!!openSecs.symptoms || hasDiarrhea} onToggle={toggle}
+        summary={symptoms.length ? `${symptoms.length} logged` : 'none'}>
         <button onClick={openSymptomModal}>+ Add Symptom</button>
         {symptoms.length > 0 && (
           <div style={{ marginTop: 10 }}>
             {[...symptoms].reverse().map((s) => (
               <div className="feed-item" key={s.id}>
                 <span><b>{s.symptom}</b> <span className="faint">{fmtClock(s.created_at)} · {nameOf(s.created_by)}</span></span>
-                <button className="danger" onClick={() => del('day_symptoms', s.id)}>✕</button>
+                <button className="danger" aria-label="Remove" onClick={() => del('day_symptoms', s.id)}>✕</button>
               </div>
             ))}
           </div>
@@ -277,12 +390,10 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
             ⚠️ <b>Diarrhea/Vomiting flagged.</b> {DIARRHEA_WARNING}
           </div>
         )}
-      </div>
+      </Section>
 
-      <div className="sec sec-orange">
-        <div className="sec-title">
-          🍽 Meals{eatenAvg !== null ? ` — ate ${eatenAvg}% on average` : ''}
-        </div>
+      <Section id="meals" tone="orange" title="🍽 Meals" open={!!openSecs.meals} onToggle={toggle}
+        summary={meals.length ? `${meals.length} logged${eatenAvg !== null ? ` · ${eatenAvg}%` : ''}` : 'none yet'}>
         <input value={mealDesc} onChange={(e) => setMealDesc(e.target.value)}
           placeholder="What was eaten? e.g. 1 egg, 2 sausage, half a bagel"
           onKeyDown={(e) => { if (e.key === 'Enter') openMealModal() }} />
@@ -294,13 +405,13 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
               {m.description}{m.amount ? ` — ${m.amount}` : ''}
               <span className="faint"> {fmtClock(m.created_at)} · {nameOf(m.created_by)}</span>
             </div>
-            <button className="danger" onClick={() => del('meals', m.id)}>✕</button>
+            <button className="danger" aria-label="Remove" onClick={() => del('meals', m.id)}>✕</button>
           </div>
         ))}
-      </div>
+      </Section>
 
-      <div className="sec sec-blue">
-        <div className="sec-title">💧 Fluids — {totalOz} oz {isToday ? 'today' : 'that day'}</div>
+      <Section id="fluids" tone="blue" title="💧 Fluids" open={!!openSecs.fluids} onToggle={toggle}
+        summary={`${totalOz} / ${FLUID_GOAL_OZ} oz`}>
         <div className="progress"><div style={{ width: Math.min(100, (totalOz / FLUID_GOAL_OZ) * 100) + '%' }} /></div>
         <div className="faint" style={{ margin: '3px 0 9px' }}>{totalOz}/{FLUID_GOAL_OZ} oz goal</div>
         <div className="chips" style={{ marginBottom: 9 }}>
@@ -320,13 +431,13 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
         {[...fluids].reverse().map((f) => (
           <div className="feed-item" key={f.id}>
             <span><b>{f.oz} oz</b> {f.fluid_type} <span className="faint">{fmtClock(f.created_at)} · {nameOf(f.created_by)}</span></span>
-            <button className="danger" onClick={() => del('fluids', f.id)}>✕</button>
+            <button className="danger" aria-label="Remove" onClick={() => del('fluids', f.id)}>✕</button>
           </div>
         ))}
-      </div>
+      </Section>
 
-      <div className="sec sec-purple">
-        <div className="sec-title">📝 Notes</div>
+      <Section id="notes" tone="purple" title="📝 Notes" open={!!openSecs.notes} onToggle={toggle}
+        summary={notes.length ? `${notes.length} saved` : 'none yet'}>
         <textarea
           value={newNote}
           onChange={(e) => setNewNote(e.target.value)}
@@ -339,10 +450,10 @@ export default function TodayPage({ nameOf, myEmail }: { nameOf: (e: string) => 
               {n.note}
               <div className="faint">{fmtClock(n.created_at)} · {nameOf(n.author_email)}</div>
             </div>
-            {n.author_email === myEmail && <button className="danger" onClick={() => del('log_entries', n.id)}>✕</button>}
+            {n.author_email === myEmail && <button className="danger" aria-label="Remove" onClick={() => del('log_entries', n.id)}>✕</button>}
           </div>
         ))}
-      </div>
+      </Section>
 
       {mealModal && (
         <div className="modal-back" onClick={() => setMealModal(null)}>

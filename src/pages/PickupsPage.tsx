@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { confirmDialog } from '../confirm'
 import { supabase, todayStr, fmtDateFull, fmtTime24, nowHHMM, FamilyMember } from '../supabase'
 import { useToast } from '../toast'
 
@@ -171,7 +172,7 @@ export default function PickupsPage({ family, myEmail, nameOf }: {
   }
 
   async function unclaim(p: Pickup) {
-    if (!confirm(`Remove ${p.claimed_name} from ${fmtDateFull(p.pickup_date)}? The day stays open.`)) return
+    if (!(await confirmDialog(`Remove ${p.claimed_name} from ${fmtDateFull(p.pickup_date)}? The day stays open.`))) return
     await supabase.from('pickups').update({
       claimed_by: null, claimed_name: null, from_time: null, to_time: null,
     }).eq('id', p.id)
@@ -179,13 +180,13 @@ export default function PickupsPage({ family, myEmail, nameOf }: {
   }
 
   async function cancelDay(p: Pickup) {
-    if (!confirm(`Cancel the pickup day on ${fmtDateFull(p.pickup_date)}?`)) return
+    if (!(await confirmDialog(`Cancel the pickup day on ${fmtDateFull(p.pickup_date)}?`))) return
     await supabase.from('pickups').update({ cancelled: true }).eq('id', p.id)
     load()
   }
 
   async function removeDay(p: Pickup) {
-    if (!confirm('Delete this day completely?')) return
+    if (!(await confirmDialog('Delete this day completely?'))) return
     await supabase.from('pickups').delete().eq('id', p.id)
     load()
   }
@@ -225,17 +226,17 @@ export default function PickupsPage({ family, myEmail, nameOf }: {
           </div>
           {!isPast && (
             <div style={{ flexShrink: 0, display: 'grid', gap: 5 }}>
-              <button style={{ padding: '7px 11px', fontSize: 13 }} onClick={() => openClaim(p)}>
+              <button style={{ padding: '7px 11px', fontSize: 15 }} onClick={() => openClaim(p)}>
                 {p.claimed_by ? 'Edit' : "I'll take it"}
               </button>
-              {p.claimed_by && <button className="secondary" style={{ padding: '5px 9px', fontSize: 12 }} onClick={() => unclaim(p)}>Clear</button>}
+              {p.claimed_by && <button className="secondary" style={{ padding: '5px 9px', fontSize: 14 }} onClick={() => unclaim(p)}>Clear</button>}
             </div>
           )}
         </div>
         {!isPast && (
           <div className="row" style={{ marginTop: 8 }}>
-            <button className="ghost" style={{ fontSize: 12 }} onClick={() => cancelDay(p)}>Cancel day</button>
-            <button className="ghost" style={{ fontSize: 12 }} onClick={() => removeDay(p)}>Delete</button>
+            <button className="ghost" style={{ fontSize: 14 }} onClick={() => cancelDay(p)}>Cancel day</button>
+            <button className="ghost" style={{ fontSize: 14 }} onClick={() => removeDay(p)}>Delete</button>
           </div>
         )}
       </div>

@@ -7,7 +7,33 @@ if (!url || !key) {
   throw new Error('Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY — see README setup steps.')
 }
 
-export const supabase = createClient(url, key)
+// ---- save-failure tracking ----
+// Every write goes through this fetch. If one fails (no signal, expired
+// session, rejected by the database) we record it and tell the app, so a
+// "logged ✓" toast can never appear for something that did not save.
+let lastWriteFailure = 0
+export function writeFailedRecently(ms = 4000) { return Date.now() - lastWriteFailure < ms }
+
+function noteWriteFailure(detail: string) {
+  lastWriteFailure = Date.now()
+  window.dispatchEvent(new CustomEvent('save-failed', { detail }))
+}
+
+const trackedFetch: typeof fetch = async (input, init) => {
+  const reqUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+  const method = (init?.method ?? (typeof input === 'object' && 'method' in input ? input.method : 'GET')).toUpperCase()
+  const isWrite = method !== 'GET' && method !== 'HEAD' && reqUrl.includes('/rest/v1/')
+  try {
+    const res = await fetch(input, init)
+    if (isWrite && !res.ok) noteWriteFailure(`Server said ${res.status}`)
+    return res
+  } catch (e) {
+    if (isWrite) noteWriteFailure('No connection')
+    throw e
+  }
+}
+
+export const supabase = createClient(url, key, { global: { fetch: trackedFetch } })
 
 export type FamilyMember = { email: string; display_name: string }
 

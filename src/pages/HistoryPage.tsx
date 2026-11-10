@@ -159,15 +159,15 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
                 </div>
               ) : (
                 <div className="feed-item" key={v.id}>
-                  <div style={{ fontSize: 13 }}>
+                  <div style={{ fontSize: 15 }}>
                     <b>{v.kind.replace('_', ' ')}:</b> {v.value} <span className="faint">{fmtClock(v.created_at)} · {nameOf(v.created_by)}</span>
                   </div>
-                  <button className="secondary" style={{ padding: '5px 9px', fontSize: 12, flexShrink: 0 }} onClick={() => startEditVital(v)}>Edit</button>
+                  <button className="secondary" style={{ padding: '5px 9px', fontSize: 14, flexShrink: 0 }} onClick={() => startEditVital(v)}>Edit</button>
                 </div>
               )
             )}
             {day.symptoms.length > 0 && (
-              <div style={{ fontSize: 13, padding: '3px 0' }}>
+              <div style={{ fontSize: 15, padding: '3px 0' }}>
                 <b>Symptoms:</b> {[...day.symptoms].reverse().map((s) => `${s.symptom} (${fmtClock(s.created_at)})`).join(', ')}
               </div>
             )}
@@ -178,7 +178,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
           <div className="sec sec-orange">
             <div className="sec-title">Meals</div>
             {day.meals.map((m) => (
-              <div key={m.id} style={{ fontSize: 13, padding: '3px 0' }}>
+              <div key={m.id} style={{ fontSize: 15, padding: '3px 0' }}>
                 <b>{m.meal_type}:</b> {m.description}{m.amount ? ` (${m.amount})` : ''} <span className="faint">{fmtClock(m.created_at)}</span>
               </div>
             ))}
@@ -189,7 +189,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
           <div className="sec sec-blue">
             <div className="sec-title">Fluids — {totalOz} oz</div>
             {day.fluids.map((f) => (
-              <div key={f.id} style={{ fontSize: 13, padding: '3px 0' }}>{f.oz} oz {f.fluid_type} <span className="faint">{fmtClock(f.created_at)} · {nameOf(f.created_by)}</span></div>
+              <div key={f.id} style={{ fontSize: 15, padding: '3px 0' }}>{f.oz} oz {f.fluid_type} <span className="faint">{fmtClock(f.created_at)} · {nameOf(f.created_by)}</span></div>
             ))}
           </div>
         )}
@@ -198,7 +198,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
           <div className="sec sec-green">
             <div className="sec-title">Meds Given</div>
             {given.map((x) => (
-              <div key={x.id} style={{ fontSize: 13, padding: '3px 0' }}>✓ {medName(x)} @ {fmtTime24(x.dose_time)} <span className="faint">{fmtClock(x.created_at)} · {nameOf(x.created_by)}</span></div>
+              <div key={x.id} style={{ fontSize: 15, padding: '3px 0' }}>✓ {medName(x)} @ {fmtTime24(x.dose_time)} <span className="faint">{fmtClock(x.created_at)} · {nameOf(x.created_by)}</span></div>
             ))}
           </div>
         )}
@@ -207,7 +207,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
           <div className="sec sec-red">
             <div className="sec-title">Meds Held</div>
             {held.map((x) => (
-              <div key={x.id} style={{ fontSize: 13, padding: '3px 0', color: 'var(--red)' }}>⏸ {medName(x)} @ {fmtTime24(x.dose_time)} — {x.hold_reason} <span className="faint">{nameOf(x.created_by)}</span></div>
+              <div key={x.id} style={{ fontSize: 15, padding: '3px 0', color: 'var(--red)' }}>⏸ {medName(x)} @ {fmtTime24(x.dose_time)} — {x.hold_reason} <span className="faint">{nameOf(x.created_by)}</span></div>
             ))}
           </div>
         )}
@@ -219,7 +219,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
             <div className="sec sec-gray" key={kind}>
               <div className="sec-title">{label}</div>
               {items.map((c) => (
-                <div key={c.id} style={{ fontSize: 13, padding: '3px 0' }}>{c.detail} <span className="faint">{fmtClock(c.created_at)} · {nameOf(c.created_by)}</span></div>
+                <div key={c.id} style={{ fontSize: 15, padding: '3px 0' }}>{c.detail} <span className="faint">{fmtClock(c.created_at)} · {nameOf(c.created_by)}</span></div>
               ))}
             </div>
           )
@@ -229,7 +229,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
           <div className="sec sec-green">
             <div className="sec-title">🏋️ Physical Therapy</div>
             {day.pt.map((p) => (
-              <div key={p.id} style={{ fontSize: 13, padding: '3px 0' }}>
+              <div key={p.id} style={{ fontSize: 15, padding: '3px 0' }}>
                 {exName(p)}: {
                   exUnit(p) === 'sets_reps' ? `${p.sets} × ${p.reps}` :
                   exUnit(p) === 'minutes' ? `${p.reps} min` :
@@ -244,7 +244,7 @@ export default function HistoryPage({ nameOf }: { nameOf: (e: string) => string 
           <div className="sec sec-purple">
             <div className="sec-title">Notes</div>
             {day.notes.map((n) => (
-              <div key={n.id} style={{ fontSize: 13, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+              <div key={n.id} style={{ fontSize: 15, padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
                 {n.note} <span className="faint">— {nameOf(n.author_email)}, {fmtClock(n.created_at)}</span>
               </div>
             ))}
