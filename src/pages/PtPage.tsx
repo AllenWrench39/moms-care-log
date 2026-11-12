@@ -133,9 +133,10 @@ export default function PtPage({ nameOf }: { nameOf: (e: string) => string }) {
 
   // ---- derived ----
   const dayLogs = weekLogs.filter((p) => p.log_date === date)
-  // sets_reps goals count reps per round, matching how the goal was entered.
+  // A 2 × 10 round counts as 20 reps toward the goal.
   const weekTotal = (ex: PtExercise) =>
-    weekLogs.filter((p) => p.exercise_id === ex.id).reduce((sum, p) => sum + Number(p.reps || 0), 0)
+    weekLogs.filter((p) => p.exercise_id === ex.id).reduce((sum, p) =>
+      sum + Number(p.reps || 0) * (ex.unit === 'sets_reps' ? Number(p.sets || 1) : 1), 0)
   const withGoal = exercises.filter((ex) => ex.weekly_goal > 0)
   const goalsMet = withGoal.filter((ex) => weekTotal(ex) >= ex.weekly_goal).length
   const doneToday = new Set(dayLogs.map((p) => p.exercise_id)).size
